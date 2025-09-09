@@ -16,32 +16,9 @@ function setupRoomHandlers(io, supabase) {
         // Load room from database first
         let dbRoom = await loadRoomFromDB(roomId, supabase);
         if (!dbRoom) {
-          console.log(`Room ${roomId} not found in database, creating it...`);
-          // Create room if it doesn't exist
-          const roomName = `Room ${roomId.split('_')[1] || roomId}`;
-          const { data, error } = await supabase
-            .from('thirteen_rooms')
-            .insert({
-              room_id: roomId,
-              room_name: roomName,
-              seats: [
-                { playerId: null, userId: null, name: null, connected: false, ready: false },
-                { playerId: null, userId: null, name: null, connected: false, ready: false },
-                { playerId: null, userId: null, name: null, connected: false, ready: false },
-                { playerId: null, userId: null, name: null, connected: false, ready: false }
-              ]
-            })
-            .select()
-            .single();
-
-          if (error) {
-            console.error('Error creating room:', error);
-            socket.emit("error", "Failed to create room");
-            return;
-          }
-
-          dbRoom = data;
-          console.log(`Created new room: ${roomId}`);
+          console.log(`Room ${roomId} not found in database. Rooms should be pre-created via SQL.`);
+          socket.emit("error", "Room not found. Please contact administrator.");
+          return;
         }
 
         // Get or create room in memory
