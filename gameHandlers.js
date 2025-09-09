@@ -1,5 +1,5 @@
-import { getRoom } from './roomManager.js';
-import { dealCards, getStartingPlayerForRoom } from './cardUtils.js';
+import { getRoom, getStartingPlayerForRoom } from './roomManager.js';
+import { dealCards } from './cardUtils.js';
 import { makeBotMove } from './botLogic.js';
 import { createCleanRoomData } from './roomHelpers.js';
 
