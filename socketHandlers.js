@@ -35,21 +35,37 @@ async function saveRoomToDB(room, supabaseClient) {
 
     // Get connected socket IDs for better tracking
     const connectedSocketIds = [];
-    room.players.forEach(p => connectedSocketIds.push(p.id));
-    room.viewers.forEach(v => connectedSocketIds.push(v.id));
+    room.players.forEach(p => {
+      if (p.connected) connectedSocketIds.push(p.id);
+    });
 
-    // Get the room owner's display name
-    const roomOwnerPlayer = room.players.find(p => p.id === room.owner || p.userId === room.owner);
-    const roomOwnerName = roomOwnerPlayer ? roomOwnerPlayer.name : room.name || 'Unknown';
+    // Prepare seats data for database
+    const seatsData = room.chairs.map((chairPlayerId, index) => {
+      if (chairPlayerId) {
+        const player = room.players.find(p => p.id === chairPlayerId);
+        return {
+          playerId: player ? player.id : null,
+          userId: player ? player.userId : null,
+          name: player ? player.name : null,
+          connected: player ? player.connected : false,
+          ready: player ? player.ready : false
+        };
+      }
+      return {
+        playerId: null,
+        userId: null,
+        name: null,
+        connected: false,
+        ready: false
+      };
+    });
 
     const upsertData = {
       room_id: room.id,
-      room_owner_id: roomOwnerId,
-      room_owner_name: roomOwnerName,
-      current_players: room.players.length + room.viewers.length,
+      room_name: room.name,
+      current_players: room.players.filter(p => p.connected).length,
       active_connections: connectedSocketIds.length,
-      players_in_seats: room.players.map(p => p.userId && p.userId !== p.id ? p.userId : null).filter(id => id !== null),
-      spectators: room.viewers.map(v => v.userId && v.userId !== v.id ? v.userId : null).filter(id => id !== null),
+      seats: seatsData,
       connected_socket_ids: connectedSocketIds,
       game_started: room.gameStarted,
       game_state: {
@@ -277,116 +293,140 @@ function setupSocketHandlers(io, supabase) {
       socket.emit("rooms_list", roomsList);
     });
 
-    socket.on("create_room", async (roomId, name, userId) => {
-      console.log('Create room request:', { roomId, name, userId, socketId: socket.id });
-
-      // Validate required parameters
-      if (!roomId || !name) {
-        socket.emit("error", "Room ID and name are required");
-        return;
-      }
-
-      // Use authenticated user UUID if available, otherwise fall back to socket ID
-      const authenticatedUserId = userId && userId !== socket.id ? userId : null;
-      const playerIdentifier = authenticatedUserId || socket.id;
-
-      console.log('Creating room with:', { roomId, playerIdentifier, name, authenticatedUserId });
-
-      const room = await getOrCreateRoom(roomId, playerIdentifier, name);
-      console.log('Room created:', { id: room.id, owner: room.owner, name: room.name });
-
-      socket.join(roomId);
-
-      // Ensure room.players is initialized
-      if (!room.players) {
-        room.players = [];
-      }
-      if (!room.viewers) {
-        room.viewers = [];
-      }
-      if (!room.chairs) {
-        room.chairs = [null, null, null, null];
-      }
-
-      // Auto-seat the room owner in chair 0
-      room.players.push({
-        id: socket.id, // Always use socket ID for socket operations
-        userId: authenticatedUserId, // Store authenticated user UUID separately
-        name: name,
-        hand: [],
-        connected: true,
-        chair: 0,
-        ready: false,
-        profilePic: null // Will be updated when user data is fetched
-      });
-      room.chairs[0] = socket.id;
-
-      // Save to database asynchronously (don't block room creation)
-      saveRoomToDB(room, supabase).catch(err => {
-        console.error('Failed to save room to database:', err);
-      });
-
-      // Update profile pictures for players
-      await updatePlayerProfilePics(room, supabase);
-
-      // Broadcast room update
-      io.to(roomId).emit("room_update", room);
-      socket.emit("room_joined", room);
-
-      // Broadcast updated room list to all clients
-      const roomsList = await getRoomsFromDB(supabase);
-      io.emit("rooms_list", roomsList);
-    });
+    // Removed create_room handler - rooms are pre-created
 
     socket.on("join_room", async (roomId, name, userId) => {
       try {
-        const room = await getRoom(roomId);
-        if (!room) {
-          // Room doesn't exist, emit error and stop
+        // Load room from database first
+        const dbRoom = await loadRoomFromDB(roomId, supabase);
+        if (!dbRoom) {
           socket.emit("error", "Room not found");
           return;
         }
 
+        // Get or create room in memory
+        let room = await getRoom(roomId);
+        if (!room) {
+          // Create room from database data
+          room = {
+            id: dbRoom.room_id,
+            name: dbRoom.room_name,
+            players: [],
+            viewers: [],
+            chairs: [null, null, null, null],
+            pile: [],
+            turn: null,
+            currentCombination: null,
+            gameStarted: dbRoom.game_started,
+            winner: null,
+            passes: [],
+            lastPlayer: null,
+            deckShuffled: false,
+            round: 1,
+            created: Date.now(),
+            lastActivity: Date.now()
+          };
+
+          // Load seats from database
+          if (dbRoom.seats) {
+            room.players = [];
+            room.chairs = [null, null, null, null];
+
+            dbRoom.seats.forEach((seat, index) => {
+              if (seat.playerId) {
+                room.players.push({
+                  id: seat.playerId,
+                  userId: seat.userId,
+                  name: seat.name,
+                  hand: [],
+                  connected: seat.connected,
+                  chair: index,
+                  ready: seat.ready,
+                  isBot: false
+                });
+                room.chairs[index] = seat.playerId;
+              }
+            });
+          }
+
+          // Load game state from database
+          if (dbRoom.game_state) {
+            const gameState = dbRoom.game_state;
+            room.pile = gameState.pile || [];
+            room.currentCombination = gameState.currentCombination;
+            room.turn = gameState.turn;
+            room.passes = gameState.passes || [];
+            room.lastPlayer = gameState.lastPlayer;
+            room.winner = gameState.winner;
+            room.round = gameState.round || 1;
+            room.deckShuffled = gameState.deckShuffled || false;
+          }
+
+          rooms.set(roomId, room);
+        }
+
         socket.join(roomId);
 
-      // Ensure room properties are initialized
-      if (!room.players) room.players = [];
-      if (!room.viewers) room.viewers = [];
+        // Use authenticated user UUID if available
+        const authenticatedUserId = userId && userId !== socket.id ? userId : null;
 
-      // Use authenticated user UUID if available
-      const authenticatedUserId = userId && userId !== socket.id ? userId : null;
+        // Check if player is already in a seat (reconnecting)
+        let seatIndex = -1;
+        let isReconnecting = false;
 
-      // Check if this player was previously the room owner (compare with authenticated user or socket)
-      const wasOwner = room.owner === authenticatedUserId || room.owner === socket.id;
+        if (authenticatedUserId) {
+          // Try to find by userId first
+          seatIndex = room.players.findIndex(p => p.userId === authenticatedUserId);
+          if (seatIndex !== -1) {
+            isReconnecting = true;
+          }
+        }
 
-      // If they were the owner and there are no human players, restore ownership
-      if (wasOwner && room.players.filter(p => !p.isBot).length === 0) {
-        room.owner = authenticatedUserId || socket.id;
-      }
+        if (!isReconnecting) {
+          // Try to find by socket ID
+          seatIndex = room.players.findIndex(p => p.id === socket.id);
+          if (seatIndex !== -1) {
+            isReconnecting = true;
+          }
+        }
 
-      // Check if player is already in viewers (prevent duplication)
-      const existingViewerIndex = room.viewers.findIndex(v => v.id === socket.id);
-      if (existingViewerIndex === -1) {
-        room.viewers.push({
-          id: socket.id,
-          userId: authenticatedUserId, // Store authenticated user UUID separately
-          name
-        });
-      }
+        if (isReconnecting) {
+          // Reconnecting to existing seat
+          room.players[seatIndex].connected = true;
+          room.players[seatIndex].id = socket.id; // Update socket ID
+        } else {
+          // Find empty seat
+          seatIndex = room.chairs.findIndex(chair => chair === null);
+          if (seatIndex === -1) {
+            socket.emit("error", "All seats are occupied");
+            return;
+          }
 
-      // Save to database
-      await saveRoomToDB(room, supabase);
+          // Take the seat
+          room.players.push({
+            id: socket.id,
+            userId: authenticatedUserId,
+            name: name,
+            hand: [],
+            connected: true,
+            chair: seatIndex,
+            ready: false,
+            isBot: false
+          });
+          room.chairs[seatIndex] = socket.id;
+        }
 
-      // Update profile pictures for players
-      await updatePlayerProfilePics(room, supabase);
+        // Save updated room to database
+        await saveRoomToDB(room, supabase);
 
-      // Broadcast room update
-      io.to(roomId).emit("room_update", room);
-      socket.emit("room_joined", room);
+        // Broadcast room update
+        io.to(roomId).emit("room_update", room);
+        socket.emit("room_joined", room);
 
-        // Broadcast updated room list to all clients
+        // Broadcast updated room list
         const roomsList = await getRoomsFromDB(supabase);
         io.emit("rooms_list", roomsList);
+
       } catch (error) {
         console.error('Error in join_room handler:', error);
         socket.emit("error", "Failed to join room");
@@ -807,92 +847,79 @@ function setupSocketHandlers(io, supabase) {
     socket.on("disconnect", async () => {
       console.log(`User ${socket.id} disconnected`);
 
-      // Remove from all rooms
+      // Mark player as disconnected in all rooms (don't remove them)
       for (const [roomId, room] of rooms) {
         let roomChanged = false;
-        let wasOwner = false;
 
-        // Ensure room properties are initialized
-        if (!room.players) room.players = [];
-        if (!room.viewers) room.viewers = [];
-        if (!room.chairs) room.chairs = [null, null, null, null];
-
-        // Remove from players if seated
+        // Find player in room
         const playerIndex = room.players.findIndex(p => p.id === socket.id);
         if (playerIndex !== -1) {
           const player = room.players[playerIndex];
-          if (player.chair !== null) {
-            room.chairs[player.chair] = null;
+          player.connected = false;
+          roomChanged = true;
+          console.log(`Marked player ${socket.id} as disconnected in room ${roomId}`);
+
+          // If it was this player's turn and game is in progress, auto-pass after 2 seconds
+          if (room.gameStarted && room.turn === socket.id) {
+            setTimeout(async () => {
+              // Check if player is still disconnected and still their turn
+              const currentPlayer = room.players.find(p => p.id === socket.id);
+              if (currentPlayer && !currentPlayer.connected && room.turn === socket.id) {
+                console.log(`Auto-passing for disconnected player ${socket.id} in room ${roomId}`);
+
+                // Add to passes
+                if (!room.passes.includes(socket.id)) {
+                  room.passes.push(socket.id);
+                }
+
+                // Check if all other players passed (start new round)
+                const activePlayers = room.players.filter(p => p.hand.length > 0);
+                const passedPlayers = activePlayers.filter(p => room.passes.includes(p.id));
+
+                if (passedPlayers.length === activePlayers.length - 1) {
+                  // All players passed, start new round
+                  room.currentCombination = null;
+                  room.passes = [];
+                  room.pile = [];
+                  room.round = (room.round || 1) + 1;
+
+                  // Turn goes to the player who played the last card
+                  if (room.lastPlayer) {
+                    room.turn = room.lastPlayer;
+                  }
+                } else {
+                  // Move to next player
+                  const currentIdx = room.players.findIndex(p => p.id === socket.id);
+                  const nextPlayerIdx = (currentIdx + 1) % room.players.length;
+                  const nextPlayer = room.players[nextPlayerIdx];
+
+                  // Skip disconnected players
+                  if (!nextPlayer.connected) {
+                    // Find next connected player
+                    let foundValidPlayer = false;
+                    for (let i = 1; i < room.players.length; i++) {
+                      const checkIdx = (currentIdx + i) % room.players.length;
+                      const checkPlayer = room.players[checkIdx];
+                      if (checkPlayer.connected) {
+                        room.turn = checkPlayer.id;
+                        foundValidPlayer = true;
+                        break;
+                      }
+                    }
+                    if (!foundValidPlayer) {
+                      room.turn = nextPlayer.id; // Fallback
+                    }
+                  } else {
+                    room.turn = nextPlayer.id;
+                  }
+                }
+
+                // Save and broadcast updated room
+                await saveRoomToDB(room, supabase);
+                io.to(roomId).emit("game_update", room);
+              }
+            }, 2000); // 2 seconds delay
           }
-          room.players.splice(playerIndex, 1);
-          roomChanged = true;
-          console.log(`Removed player ${socket.id} from room ${roomId}`);
-        }
-
-        // Remove from viewers
-        const viewerCountBefore = room.viewers.length;
-        room.viewers = room.viewers.filter(v => v.id !== socket.id);
-        if (viewerCountBefore !== room.viewers.length) {
-          roomChanged = true;
-          console.log(`Removed viewer ${socket.id} from room ${roomId}`);
-        }
-
-        // If room owner disconnected, assign new owner to first human player
-        if (room.owner === socket.id) {
-          wasOwner = true;
-          const humanPlayers = room.players.filter(p => !p.isBot);
-          if (humanPlayers.length > 0) {
-            room.owner = humanPlayers[0].id;
-            console.log(`Transferred ownership to ${humanPlayers[0].id} in room ${roomId}`);
-          } else if (room.players.length > 0) {
-            // If no human players, assign to first bot
-            room.owner = room.players[0].id;
-            console.log(`Transferred ownership to bot ${room.players[0].id} in room ${roomId}`);
-          } else {
-            // No players left, room should be deleted
-            console.log(`No players left in room ${roomId}, marking for deletion`);
-          }
-          roomChanged = true;
-        }
-
-        // Check if room is now empty and should be deleted
-        const totalPlayers = room.players.length + room.viewers.length;
-        if (totalPlayers === 0) {
-          console.log(`Room ${roomId} is now empty, deleting from database and memory`);
-          await deleteRoomFromDB(roomId, supabase);
-          rooms.delete(roomId); // Remove from memory
-          continue; // Skip broadcasting updates for deleted room
-        }
-
-        // If the room owner left and there are only bots left, also delete the room
-        if (wasOwner && room.players.length > 0 && room.players.every(p => p.isBot)) {
-          console.log(`Room ${roomId} has only bots left after owner departure, deleting from database and memory`);
-          await deleteRoomFromDB(roomId, supabase);
-          rooms.delete(roomId); // Remove from memory
-          continue; // Skip broadcasting updates for deleted room
-        }
-
-        // If game was in progress and owner left, end the game
-        if (wasOwner && room.gameStarted && room.players.length > 0) {
-          console.log(`Game in progress in room ${roomId}, ending game due to owner departure`);
-          room.gameStarted = false;
-          room.winner = null;
-          room.winnerLastCards = null;
-          room.pile = [];
-          room.currentCombination = null;
-          room.turn = null;
-          room.passes = [];
-          room.lastPlayer = null;
-          room.round = 1;
-          room.deckShuffled = false;
-
-          // Reset all players' ready status
-          room.players.forEach(player => {
-            player.ready = false;
-            player.hand = [];
-          });
-
-          roomChanged = true;
         }
 
         // Save room changes to database
@@ -901,12 +928,12 @@ function setupSocketHandlers(io, supabase) {
           console.log(`Saved room changes for ${roomId} to database`);
         }
 
-        // Broadcast room update to remaining players
+        // Broadcast room update
         io.to(roomId).emit("room_update", room);
-        console.log(`Broadcasted room update for ${roomId} with ${room.players.length} players and ${room.viewers.length} viewers`);
+        console.log(`Broadcasted room update for ${roomId}`);
       }
 
-      // Broadcast updated room list to all clients
+      // Broadcast updated room list
       const roomsList = await getRoomsFromDB(supabase);
       io.emit("rooms_list", roomsList);
       console.log(`Broadcasted updated room list`);
