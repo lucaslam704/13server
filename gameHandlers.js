@@ -9,22 +9,15 @@ function setupGameHandlers(io, supabase) {
       const room = await getRoom(roomId);
       if (!room) return; // Room might have been cleaned up
 
-      // Check if user is the room owner (compare with authenticated user ID or socket ID)
-      const isOwner = room.players.some(p => p.id === socket.id && (p.userId === room.owner || p.id === room.owner));
-      if (!isOwner) {
-        socket.emit("error", "Only the room owner can start the game");
-        return;
-      }
-
       // Ensure room properties are initialized
       if (!room.players) room.players = [];
 
-      // Check if all OTHER seated players are ready (exclude owner)
+      // Check if all seated players are ready
       const seatedPlayers = room.players.filter(p => p.chair !== null);
       if (seatedPlayers.length < 2) return; // Need at least 2 players
 
-      const otherPlayersReady = seatedPlayers.filter(p => p.id !== socket.id).every(p => p.ready);
-      if (!otherPlayersReady) return; // All other players must be ready
+      const allPlayersReady = seatedPlayers.every(p => p.ready);
+      if (!allPlayersReady) return; // All players must be ready
 
       // Reset game state completely before starting new game
       room.gameStarted = true;
@@ -43,21 +36,14 @@ function setupGameHandlers(io, supabase) {
         player.ready = false; // Reset ready status for new game
       });
 
-      console.log(`Game restarted in room ${roomId} with ${seatedPlayers.length} players`);
-      io.to(roomId).emit("game_started", room);
+      console.log(`Game started in room ${roomId} with ${seatedPlayers.length} players`);
+      io.to(roomId).emit("game_started", createCleanRoomData(room));
     });
 
     // Add explicit restart_game handler for better game restart flow
     socket.on("restart_game", async (roomId) => {
       const room = await getRoom(roomId);
       if (!room) return; // Room might have been cleaned up
-
-      // Check if user is the room owner (compare with authenticated user ID or socket ID)
-      const isOwner = room.players.some(p => p.id === socket.id && (p.userId === room.owner || p.id === room.owner));
-      if (!isOwner) {
-        socket.emit("error", "Only the room owner can restart the game");
-        return;
-      }
 
       // Ensure room properties are initialized
       if (!room.players) room.players = [];
@@ -69,11 +55,10 @@ function setupGameHandlers(io, supabase) {
         console.log(`Allowing single player restart in room ${roomId}`);
       }
 
-      // Check if all OTHER seated players are ready (exclude owner)
-      const otherPlayers = seatedPlayers.filter(p => p.id !== socket.id);
-      const otherPlayersReady = otherPlayers.length === 0 || otherPlayers.every(p => p.ready);
-      if (!otherPlayersReady) {
-        socket.emit("error", "All other players must be ready to restart the game");
+      // Check if all seated players are ready
+      const allPlayersReady = seatedPlayers.every(p => p.ready);
+      if (!allPlayersReady) {
+        socket.emit("error", "All players must be ready to restart the game");
         return;
       }
 
@@ -95,7 +80,7 @@ function setupGameHandlers(io, supabase) {
         player.ready = false;
       });
 
-      console.log(`Game explicitly restarted in room ${roomId} with ready check`);
+      console.log(`Game restarted in room ${roomId} with ready check`);
 
       // Emit restart event first
       io.to(roomId).emit("game_restarted", createCleanRoomData(room));

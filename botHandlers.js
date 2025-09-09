@@ -7,10 +7,6 @@ function setupBotHandlers(io, supabase) {
       const room = await getRoom(roomId);
       if (!room) return; // Room might have been cleaned up
 
-      // Check if user is the room owner (compare with authenticated user ID or socket ID)
-      const isOwner = room.players.some(p => p.id === socket.id && (p.userId === room.owner || p.id === room.owner));
-      if (!isOwner) return;
-
       // Ensure room properties are initialized
       if (!room.players) room.players = [];
       if (!room.chairs) room.chairs = [null, null, null, null];
@@ -43,10 +39,6 @@ function setupBotHandlers(io, supabase) {
     socket.on("remove_bot", async (roomId) => {
       const room = await getRoom(roomId);
       if (!room) return; // Room might have been cleaned up
-
-      // Check if user is the room owner (compare with authenticated user ID or socket ID)
-      const isOwner = room.players.some(p => p.id === socket.id && (p.userId === room.owner || p.id === room.owner));
-      if (!isOwner) return;
 
       // Ensure room properties are initialized
       if (!room.players) room.players = [];

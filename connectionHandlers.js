@@ -27,58 +27,67 @@ function setupConnectionHandlers(io, supabase) {
           }
           room.countdownTime = null;
 
-          // If it was this player's turn and game is in progress, auto-pass after 2 seconds
+          // If it was this player's turn and game is in progress, handle turn passing
           if (room.gameStarted && room.turn === socket.id) {
             setTimeout(async () => {
               // Check if player is still disconnected and still their turn
               const currentPlayer = room.players.find(p => p.id === socket.id);
               if (currentPlayer && !currentPlayer.connected && room.turn === socket.id) {
-                console.log(`Auto-passing for disconnected player ${socket.id} in room ${roomId}`);
+                console.log(`Handling turn for disconnected player ${socket.id} in room ${roomId}`);
 
-                // Add to passes
-                if (!room.passes.includes(socket.id)) {
-                  room.passes.push(socket.id);
-                }
+                // Check if all connected players have left
+                const connectedPlayers = room.players.filter(p => p.connected && p.chair !== null);
 
-                // Check if all other players passed (start new round)
-                const activePlayers = room.players.filter(p => p.hand.length > 0);
-                const passedPlayers = activePlayers.filter(p => room.passes.includes(p.id));
-
-                if (passedPlayers.length === activePlayers.length - 1) {
-                  // All players passed, start new round
-                  room.currentCombination = null;
-                  room.passes = [];
+                if (connectedPlayers.length === 0) {
+                  // All players disconnected, stop the game and go back to waiting state
+                  console.log(`All players disconnected in room ${roomId}, stopping game`);
+                  room.gameStarted = false;
                   room.pile = [];
-                  room.round = (room.round || 1) + 1;
+                  room.currentCombination = null;
+                  room.winner = null;
+                  room.passes = [];
+                  room.lastPlayer = null;
+                  room.turn = null;
+                  room.round = 1;
+                  room.deckShuffled = false;
 
-                  // Turn goes to the player who played the last card
-                  if (room.lastPlayer) {
-                    room.turn = room.lastPlayer;
-                  }
+                  // Reset all players' ready status
+                  room.players.forEach(player => {
+                    player.ready = false;
+                  });
                 } else {
-                  // Move to next player
+                  // Pass the turn to the next connected player
                   const currentIdx = room.players.findIndex(p => p.id === socket.id);
-                  const nextPlayerIdx = (currentIdx + 1) % room.players.length;
-                  const nextPlayer = room.players[nextPlayerIdx];
+                  let nextPlayerIdx = (currentIdx + 1) % room.players.length;
+                  let nextPlayer = room.players[nextPlayerIdx];
 
-                  // Skip disconnected players
-                  if (!nextPlayer.connected) {
-                    // Find next connected player
-                    let foundValidPlayer = false;
-                    for (let i = 1; i < room.players.length; i++) {
-                      const checkIdx = (currentIdx + i) % room.players.length;
-                      const checkPlayer = room.players[checkIdx];
-                      if (checkPlayer.connected) {
-                        room.turn = checkPlayer.id;
-                        foundValidPlayer = true;
-                        break;
-                      }
-                    }
-                    if (!foundValidPlayer) {
-                      room.turn = nextPlayer.id; // Fallback
-                    }
-                  } else {
+                  // Find the next connected player
+                  let attempts = 0;
+                  while (!nextPlayer.connected && attempts < room.players.length) {
+                    nextPlayerIdx = (nextPlayerIdx + 1) % room.players.length;
+                    nextPlayer = room.players[nextPlayerIdx];
+                    attempts++;
+                  }
+
+                  if (nextPlayer.connected) {
                     room.turn = nextPlayer.id;
+                    console.log(`Turn passed to ${nextPlayer.id} after ${socket.id} disconnected`);
+                  } else {
+                    // No connected players found, stop the game
+                    console.log(`No connected players found, stopping game in room ${roomId}`);
+                    room.gameStarted = false;
+                    room.pile = [];
+                    room.currentCombination = null;
+                    room.winner = null;
+                    room.passes = [];
+                    room.lastPlayer = null;
+                    room.turn = null;
+                    room.round = 1;
+                    room.deckShuffled = false;
+
+                    room.players.forEach(player => {
+                      player.ready = false;
+                    });
                   }
                 }
 

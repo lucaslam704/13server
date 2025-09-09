@@ -1,11 +1,10 @@
 // Room management utilities with database integration
 const rooms = new Map(); // Store multiple rooms in memory
 
-function createRoom(roomId, ownerId, ownerName) {
+function createRoom(roomId, roomName) {
   const room = {
     id: roomId,
-    owner: ownerId,
-    name: ownerName, // Add the room name
+    name: roomName,
     players: [], // {id, name, hand: [], connected: boolean, chair: number | null, ready: boolean}
     viewers: [], // {id, name}
     chairs: [null, null, null, null], // 4 chairs, null means empty
@@ -17,7 +16,8 @@ function createRoom(roomId, ownerId, ownerName) {
     passes: [], // Players who passed this round
     lastPlayer: null, // Player who played the last card
     round: 1, // Current round number
-    created: Date.now()
+    created: Date.now(),
+    lastActivity: Date.now()
   };
 
   return room;
@@ -37,7 +37,6 @@ async function getRoom(roomId) {
       // Reconstruct room object from database data
       room = {
         id: dbRoom.room_id,
-        owner: dbRoom.room_owner_id, // This is now a user UUID from the database
         name: dbRoom.room_name || 'Unnamed Room',
         players: [], // Will be populated as players reconnect with their user UUIDs
         viewers: [], // Will be populated as viewers reconnect with their user UUIDs
@@ -50,7 +49,8 @@ async function getRoom(roomId) {
         passes: dbRoom.game_state?.passes || [],
         lastPlayer: dbRoom.game_state?.lastPlayer || null,
         round: dbRoom.game_state?.round || 1,
-        created: new Date(dbRoom.created_at).getTime()
+        created: new Date(dbRoom.created_at).getTime(),
+        lastActivity: Date.now()
       };
 
       // Note: We don't reconstruct players/viewers from DB here because:
@@ -68,11 +68,11 @@ async function getRoom(roomId) {
   return null;
 }
 
-async function getOrCreateRoom(roomId, playerId, playerName) {
+async function getOrCreateRoom(roomId, roomName) {
   let room = await getRoom(roomId);
 
   if (!room) {
-    room = createRoom(roomId, playerId, playerName);
+    room = createRoom(roomId, roomName);
     rooms.set(roomId, room);
   }
 

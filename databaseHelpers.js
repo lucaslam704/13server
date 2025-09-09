@@ -3,37 +3,9 @@ async function saveRoomToDB(room, supabaseClient) {
   try {
     console.log('saveRoomToDB called with room:', {
       id: room.id,
-      owner: room.owner,
       name: room.name,
       playersCount: room.players?.length || 0
     });
-
-    // Get the actual user UUID for the room owner
-    let roomOwnerId = room.owner;
-
-    // If room.owner is undefined or a socket ID, try to find the first human player as owner
-    if (!roomOwnerId || roomOwnerId.startsWith('socket_') || roomOwnerId.length < 20) {
-      if (room.players && room.players.length > 0) {
-        // Find first human player (not a bot)
-        const humanPlayer = room.players.find(p => !p.isBot && p.userId);
-        if (humanPlayer) {
-          roomOwnerId = humanPlayer.userId;
-          room.owner = roomOwnerId; // Update room owner
-        } else {
-          // If no human players, use first player's userId or socket ID as fallback
-          const firstPlayer = room.players[0];
-          if (firstPlayer) {
-            roomOwnerId = firstPlayer.userId || firstPlayer.id;
-            room.owner = roomOwnerId;
-          }
-        }
-      }
-    }
-
-    // If we still don't have a valid owner, skip database operation but don't fail
-    if (!roomOwnerId) {
-      return { success: true, inMemoryOnly: true };
-    }
 
     // Get connected socket IDs for better tracking
     const connectedSocketIds = [];
@@ -178,7 +150,6 @@ async function getRoomsFromDB(supabaseClient) {
     console.log('Successfully loaded rooms list from database:', data.length, 'rooms');
     return data.map(room => ({
       id: room.room_id,
-      owner: room.room_owner_id,
       playerCount: room.current_players,
       gameStarted: room.game_started,
       created: new Date(room.created_at).getTime()
@@ -196,7 +167,6 @@ function getDefaultRooms() {
     const roomId = `room_${i.toString().padStart(2, '0')}`;
     defaultRooms.push({
       id: roomId,
-      owner: null,
       playerCount: 0,
       gameStarted: false,
       created: Date.now()

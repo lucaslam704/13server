@@ -95,7 +95,6 @@ function createCleanRoomData(room) {
   return {
     id: room.id,
     name: room.name,
-    owner: room.owner,
     players: room.players.map(p => ({
       id: p.id,
       userId: p.userId,

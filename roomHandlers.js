@@ -274,22 +274,20 @@ function setupRoomHandlers(io, supabase) {
       const allReady = seatedPlayers.length >= 2 && seatedPlayers.every(p => p.ready);
 
       if (allReady && !room.gameStarted) {
-        // Start 6-second countdown
+        // Start 6-second countdown to game start
         room.countdownTime = 6;
-
-        // Emit initial countdown
         io.to(roomId).emit("countdown_update", room.countdownTime);
 
         room.countdownInterval = setInterval(() => {
           room.countdownTime--;
 
           if (room.countdownTime <= 0) {
-            // Time's up - start the game
+            // Time's up - start the game automatically
             clearInterval(room.countdownInterval);
             room.countdownInterval = null;
             room.countdownTime = null;
 
-            // Start game logic (same as before)
+            // Initialize game state
             room.gameStarted = true;
             room.pile = [];
             room.currentCombination = null;
@@ -300,7 +298,7 @@ function setupRoomHandlers(io, supabase) {
             room.round = 1;
             room.deckShuffled = true;
 
-            // Clear all players' hands and reset ready status
+            // Reset all players' hands and ready status
             room.players.forEach(player => {
               player.hand = [];
               player.ready = false;
@@ -308,16 +306,12 @@ function setupRoomHandlers(io, supabase) {
 
             io.to(roomId).emit("game_started", createCleanRoomData(room));
           } else {
-            // Emit countdown update
             io.to(roomId).emit("countdown_update", room.countdownTime);
           }
         }, 1000);
       }
 
-      // Create clean room data for socket emission
-      const cleanRoomData = createCleanRoomData(room);
-
-      io.to(roomId).emit("room_update", cleanRoomData);
+      io.to(roomId).emit("room_update", createCleanRoomData(room));
     });
   });
 }
