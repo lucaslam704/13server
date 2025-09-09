@@ -43,8 +43,6 @@ async function saveRoomToDB(room, supabaseClient) {
         round: room.round,
         deckShuffled: room.deckShuffled
       },
-      is_active: true,
-      last_activity: new Date().toISOString()
     };
 
     console.log('Attempting to upsert room data:', JSON.stringify(upsertData, null, 2));
@@ -79,7 +77,6 @@ async function loadRoomFromDB(roomId, supabaseClient) {
       .from('thirteen_rooms')
       .select('*')
       .eq('room_id', roomId)
-      .eq('is_active', true)
       .single();
 
     if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
@@ -103,7 +100,7 @@ async function deleteRoomFromDB(roomId, supabaseClient) {
   try {
     const { error } = await supabaseClient
       .from('thirteen_rooms')
-      .update({ is_active: false })
+      .delete()
       .eq('room_id', roomId);
 
     if (error) {
@@ -124,8 +121,7 @@ async function getRoomsFromDB(supabaseClient) {
     const { data, error } = await supabaseClient
       .from('thirteen_rooms')
       .select('*')
-      .eq('is_active', true)
-      .order('created_at', { ascending: false });
+      .order('id', { ascending: false });
 
     if (error) {
       console.error('Error getting rooms from DB:', error);

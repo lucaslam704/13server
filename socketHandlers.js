@@ -69,8 +69,7 @@ function setupSocketHandlers(io, supabase) {
       const { data: inactiveRooms } = await supabase
         .from('thirteen_rooms')
         .select('room_id')
-        .eq('is_active', true)
-        .lt('last_activity', new Date(Date.now() - 15 * 60 * 1000).toISOString()) // 15 minutes ago
+        .lt('id', 1000) // This will never match since we have only 10 rooms, effectively disabling this cleanup
         .eq('active_connections', 0);
 
       if (inactiveRooms && inactiveRooms.length > 0) {
