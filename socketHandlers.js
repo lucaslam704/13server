@@ -280,7 +280,8 @@ function setupSocketHandlers(io, supabase) {
     socket.on("join_room", async (roomId, name, userId) => {
       const room = await getRoom(roomId);
       if (!room) {
-        socket.emit("error", "Room not found");
+        // Room might have been cleaned up, emit a more user-friendly message
+        socket.emit("error", "Room is no longer available");
         return;
       }
 
@@ -328,7 +329,8 @@ function setupSocketHandlers(io, supabase) {
 
     socket.on("sit_chair", async (roomId, chairIndex) => {
       const room = await getRoom(roomId);
-      if (!room || chairIndex < 0 || chairIndex >= 4) return;
+      if (!room) return; // Room might have been cleaned up
+      if (chairIndex < 0 || chairIndex >= 4) return;
 
       // Ensure room properties are initialized
       if (!room.players) room.players = [];
@@ -373,7 +375,7 @@ function setupSocketHandlers(io, supabase) {
 
     socket.on("stand_up", async (roomId) => {
       const room = await getRoom(roomId);
-      if (!room) return;
+      if (!room) return; // Room might have been cleaned up
 
       // Ensure room properties are initialized
       if (!room.players) room.players = [];
@@ -403,7 +405,7 @@ function setupSocketHandlers(io, supabase) {
 
     socket.on("toggle_ready", async (roomId) => {
       const room = await getRoom(roomId);
-      if (!room) return;
+      if (!room) return; // Room might have been cleaned up
 
       // Ensure room properties are initialized
       if (!room.players) room.players = [];
@@ -417,7 +419,7 @@ function setupSocketHandlers(io, supabase) {
 
     socket.on("add_bot", async (roomId) => {
       const room = await getRoom(roomId);
-      if (!room) return;
+      if (!room) return; // Room might have been cleaned up
 
       // Check if user is the room owner (compare with authenticated user ID or socket ID)
       const isOwner = room.players.some(p => p.id === socket.id && (p.userId === room.owner || p.id === room.owner));
@@ -454,7 +456,7 @@ function setupSocketHandlers(io, supabase) {
 
     socket.on("remove_bot", async (roomId) => {
       const room = await getRoom(roomId);
-      if (!room) return;
+      if (!room) return; // Room might have been cleaned up
 
       // Check if user is the room owner (compare with authenticated user ID or socket ID)
       const isOwner = room.players.some(p => p.id === socket.id && (p.userId === room.owner || p.id === room.owner));
@@ -477,7 +479,7 @@ function setupSocketHandlers(io, supabase) {
 
     socket.on("start_game", async (roomId) => {
       const room = await getRoom(roomId);
-      if (!room) return;
+      if (!room) return; // Room might have been cleaned up
 
       // Check if user is the room owner (compare with authenticated user ID or socket ID)
       const isOwner = room.players.some(p => p.id === socket.id && (p.userId === room.owner || p.id === room.owner));
@@ -520,7 +522,7 @@ function setupSocketHandlers(io, supabase) {
     // Add explicit restart_game handler for better game restart flow
     socket.on("restart_game", async (roomId) => {
       const room = await getRoom(roomId);
-      if (!room) return;
+      if (!room) return; // Room might have been cleaned up
 
       // Check if user is the room owner (compare with authenticated user ID or socket ID)
       const isOwner = room.players.some(p => p.id === socket.id && (p.userId === room.owner || p.id === room.owner));
@@ -578,7 +580,8 @@ function setupSocketHandlers(io, supabase) {
     // New event to deal cards after animation completes
     socket.on("deal_cards", async (roomId) => {
       const room = await getRoom(roomId);
-      if (!room || !room.gameStarted || !room.deckShuffled) return;
+      if (!room) return; // Room might have been cleaned up
+      if (!room.gameStarted || !room.deckShuffled) return;
 
       dealCards(room);
 
@@ -597,31 +600,26 @@ function setupSocketHandlers(io, supabase) {
 
     socket.on("play_cards", async ({ roomId, cards }) => {
       const room = await getRoom(roomId);
-      if (!room || !room.gameStarted) return;
+      if (!room) return; // Room might have been cleaned up
+      if (!room.gameStarted) return;
 
       const player = room.players.find(p => p.id === socket.id);
       if (!player || room.turn !== socket.id) return;
 
-      console.log(`[DEBUG] Player ${player.name} (${socket.id}) playing cards in round ${room.round}: [${cards.join(', ')}]`);
-      console.log(`[DEBUG] Current passes before play: [${room.passes.join(', ')}]`);
-
       // Validate the combination
       const combination = validateCombination(cards);
       if (!combination) {
-        console.log(`[DEBUG] Invalid combination played by ${player.name}`);
         return; // Invalid combination
       }
 
       // Check if it can beat the current combination
       if (!canBeatCombination(combination, room.currentCombination)) {
-        console.log(`[DEBUG] Combination cannot beat current combination for ${player.name}`);
         return;
       }
 
       // Check if player has all the cards
       const hasAllCards = cards.every(card => player.hand.includes(card));
       if (!hasAllCards) {
-        console.log(`[DEBUG] Player ${player.name} doesn't have all required cards`);
         return;
       }
 
@@ -632,15 +630,11 @@ function setupSocketHandlers(io, supabase) {
       // Don't reset passes here - only reset when a new round actually starts
       room.lastPlayer = player.id; // Track who played last
 
-      console.log(`[DEBUG] Play successful! Passes unchanged: [${room.passes.join(', ')}]`);
-      console.log(`[DEBUG] Last player set to: ${player.name} (${player.id})`);
-
       // Check if player won
       if (player.hand.length === 0) {
         room.winner = player.id;
         room.winnerLastCards = cards; // Store the winning cards
         room.gameStarted = false;
-        console.log(`[DEBUG] Player ${player.name} won the game with cards: [${cards.join(', ')}]`);
       } else {
         // Move to next player
         const currentIdx = room.players.findIndex(p => p.id === socket.id);
@@ -649,7 +643,6 @@ function setupSocketHandlers(io, supabase) {
 
         // Skip players who have passed this round
         if (room.passes.includes(nextPlayer.id)) {
-          console.log(`[DEBUG] Next player ${nextPlayer.name} has already passed this round, skipping...`);
           // Find the next player who hasn't passed
           let foundValidPlayer = false;
           for (let i = 1; i < room.players.length; i++) {
@@ -657,17 +650,12 @@ function setupSocketHandlers(io, supabase) {
             const checkPlayer = room.players[checkIdx];
             if (!room.passes.includes(checkPlayer.id)) {
               room.turn = checkPlayer.id;
-              console.log(`[DEBUG] Found valid next player: ${checkPlayer.name} (${checkPlayer.id})`);
               foundValidPlayer = true;
               break;
             }
           }
-          if (!foundValidPlayer) {
-            console.log(`[DEBUG] ERROR: No valid players found to take turn!`);
-          }
         } else {
           room.turn = nextPlayer.id;
-          console.log(`[DEBUG] Turn moved to: ${nextPlayer.name} (${nextPlayer.id})`);
         }
 
         // If next player is a bot, make them move
@@ -677,49 +665,34 @@ function setupSocketHandlers(io, supabase) {
         }
       }
 
-      console.log(`[DEBUG] Final turn after play: ${room.players.find(p => p.id === room.turn)?.name} (${room.turn})`);
-      console.log(`[DEBUG] --- End of play_cards handler ---\n`);
-
       io.to(roomId).emit("game_update", room);
     });
 
     socket.on("pass", async (roomId) => {
       const room = await getRoom(roomId);
-      if (!room || !room.gameStarted || room.turn !== socket.id) return;
+      if (!room) return; // Room might have been cleaned up
+      if (!room.gameStarted || room.turn !== socket.id) return;
 
       const playerId = socket.id;
-      const playerName = room.players.find(p => p.id === playerId)?.name || 'Unknown';
-
-      console.log(`[DEBUG] Player ${playerName} (${playerId}) is passing in round ${room.round}`);
-      console.log(`[DEBUG] Current passes before: [${room.passes.join(', ')}]`);
 
       if (!room.passes.includes(playerId)) {
         room.passes.push(playerId);
-        console.log(`[DEBUG] Added ${playerName} to passes. New passes: [${room.passes.join(', ')}]`);
       }
 
       // If all other players passed, start new round
       const activePlayers = room.players.filter(p => p.hand.length > 0);
       const passedPlayers = activePlayers.filter(p => room.passes.includes(p.id));
 
-      console.log(`[DEBUG] Active players: ${activePlayers.length}, Passed players: ${passedPlayers.length}`);
-      console.log(`[DEBUG] Active player IDs: [${activePlayers.map(p => p.id).join(', ')}]`);
-      console.log(`[DEBUG] Passed player IDs: [${passedPlayers.map(p => p.id).join(', ')}]`);
-
       if (passedPlayers.length === activePlayers.length - 1) {
-        // All players passed, start new round with the player who played last
-        console.log(`[DEBUG] All players passed! Starting new round. Clearing passes array.`);
+        // All players passed, start new round with the player who played the last card
         room.currentCombination = null;
         room.passes = [];
         room.pile = []; // Clear the cards from the table
         room.round = (room.round || 1) + 1; // Increment round counter
-        console.log(`[DEBUG] Round incremented to ${room.round}. Passes cleared: [${room.passes.join(', ')}]`);
 
         // Turn goes to the player who played the last card
         if (room.lastPlayer) {
           room.turn = room.lastPlayer;
-          const lastPlayerName = room.players.find(p => p.id === room.lastPlayer)?.name || 'Unknown';
-          console.log(`[DEBUG] Turn goes to last player: ${lastPlayerName} (${room.lastPlayer})`);
 
           // If the last player is a bot, make them move
           const lastPlayerObj = room.players.find(p => p.id === room.lastPlayer);
@@ -739,7 +712,6 @@ function setupSocketHandlers(io, supabase) {
 
         // Skip players who have passed this round
         if (room.passes.includes(nextPlayer.id)) {
-          console.log(`[DEBUG] Next player ${nextPlayer.name} has already passed this round, skipping...`);
           // Find the next player who hasn't passed
           let foundValidPlayer = false;
           for (let i = 1; i < room.players.length; i++) {
@@ -747,17 +719,12 @@ function setupSocketHandlers(io, supabase) {
             const checkPlayer = room.players[checkIdx];
             if (!room.passes.includes(checkPlayer.id)) {
               room.turn = checkPlayer.id;
-              console.log(`[DEBUG] Found valid next player: ${checkPlayer.name} (${checkPlayer.id})`);
               foundValidPlayer = true;
               break;
             }
           }
-          if (!foundValidPlayer) {
-            console.log(`[DEBUG] ERROR: No valid players found to take turn!`);
-          }
         } else {
           room.turn = nextPlayer.id;
-          console.log(`[DEBUG] Turn moved to: ${nextPlayer.name} (${nextPlayer.id})`);
         }
 
         // If next player is a bot, make them move
@@ -766,10 +733,6 @@ function setupSocketHandlers(io, supabase) {
           setTimeout(() => makeBotMove(room, nextPlayerObj, io), 1000);
         }
       }
-
-      console.log(`[DEBUG] Final turn: ${room.players.find(p => p.id === room.turn)?.name} (${room.turn})`);
-      console.log(`[DEBUG] Final passes: [${room.passes.join(', ')}]`);
-      console.log(`[DEBUG] --- End of pass handler ---\n`);
 
       io.to(roomId).emit("game_update", room);
     });
@@ -780,6 +743,7 @@ function setupSocketHandlers(io, supabase) {
       // Remove from all rooms
       for (const [roomId, room] of rooms) {
         let roomChanged = false;
+        let wasOwner = false;
 
         // Ensure room properties are initialized
         if (!room.players) room.players = [];
@@ -808,6 +772,7 @@ function setupSocketHandlers(io, supabase) {
 
         // If room owner disconnected, assign new owner to first human player
         if (room.owner === socket.id) {
+          wasOwner = true;
           const humanPlayers = room.players.filter(p => !p.isBot);
           if (humanPlayers.length > 0) {
             room.owner = humanPlayers[0].id;
@@ -816,19 +781,51 @@ function setupSocketHandlers(io, supabase) {
             // If no human players, assign to first bot
             room.owner = room.players[0].id;
             console.log(`Transferred ownership to bot ${room.players[0].id} in room ${roomId}`);
+          } else {
+            // No players left, room should be deleted
+            console.log(`No players left in room ${roomId}, marking for deletion`);
           }
-          // If no players at all, ownership remains with disconnected player
-          // It will be restored when they reconnect
           roomChanged = true;
         }
 
         // Check if room is now empty and should be deleted
         const totalPlayers = room.players.length + room.viewers.length;
         if (totalPlayers === 0) {
-          console.log(`Room ${roomId} is now empty, deleting from database`);
+          console.log(`Room ${roomId} is now empty, deleting from database and memory`);
           await deleteRoomFromDB(roomId, supabase);
           rooms.delete(roomId); // Remove from memory
           continue; // Skip broadcasting updates for deleted room
+        }
+
+        // If the room owner left and there are only bots left, also delete the room
+        if (wasOwner && room.players.length > 0 && room.players.every(p => p.isBot)) {
+          console.log(`Room ${roomId} has only bots left after owner departure, deleting from database and memory`);
+          await deleteRoomFromDB(roomId, supabase);
+          rooms.delete(roomId); // Remove from memory
+          continue; // Skip broadcasting updates for deleted room
+        }
+
+        // If game was in progress and owner left, end the game
+        if (wasOwner && room.gameStarted && room.players.length > 0) {
+          console.log(`Game in progress in room ${roomId}, ending game due to owner departure`);
+          room.gameStarted = false;
+          room.winner = null;
+          room.winnerLastCards = null;
+          room.pile = [];
+          room.currentCombination = null;
+          room.turn = null;
+          room.passes = [];
+          room.lastPlayer = null;
+          room.round = 1;
+          room.deckShuffled = false;
+
+          // Reset all players' ready status
+          room.players.forEach(player => {
+            player.ready = false;
+            player.hand = [];
+          });
+
+          roomChanged = true;
         }
 
         // Save room changes to database
