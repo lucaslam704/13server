@@ -164,10 +164,16 @@ async function getRoomsFromDB(supabaseClient) {
 
     if (error) {
       console.error('Error getting rooms from DB:', error);
-      return [];
+      // Return default rooms if database error
+      return getDefaultRooms();
     }
 
-    console.log('Successfully loaded rooms list from database');
+    if (!data || data.length === 0) {
+      console.log('No rooms found in database, returning default rooms');
+      return getDefaultRooms();
+    }
+
+    console.log('Successfully loaded rooms list from database:', data.length, 'rooms');
     return data.map(room => ({
       id: room.room_id,
       owner: room.room_owner_id,
@@ -177,8 +183,25 @@ async function getRoomsFromDB(supabaseClient) {
     }));
   } catch (err) {
     console.error('Error in getRoomsFromDB:', err);
-    return [];
+    // Return default rooms if error
+    return getDefaultRooms();
   }
+}
+
+function getDefaultRooms() {
+  const defaultRooms = [];
+  for (let i = 1; i <= 10; i++) {
+    const roomId = `room_${i.toString().padStart(2, '0')}`;
+    defaultRooms.push({
+      id: roomId,
+      owner: null,
+      playerCount: 0,
+      gameStarted: false,
+      created: Date.now()
+    });
+  }
+  console.log('Returning default rooms:', defaultRooms.length);
+  return defaultRooms;
 }
 
 // Helper function to fetch and update profile pictures for players
@@ -219,7 +242,61 @@ async function updatePlayerProfilePics(room, supabaseClient) {
   }
 }
 
+async function initializeRooms(supabase) {
+  try {
+    console.log('Initializing Thirteen rooms...');
+
+    // Check if rooms already exist
+    const { data: existingRooms, error: checkError } = await supabase
+      .from('thirteen_rooms')
+      .select('room_id')
+      .limit(1);
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Error checking for existing rooms:', checkError);
+      return;
+    }
+
+    if (existingRooms && existingRooms.length > 0) {
+      console.log('Rooms already exist, skipping initialization');
+      return;
+    }
+
+    // Create the 10 rooms
+    const roomsToCreate = [];
+    for (let i = 1; i <= 10; i++) {
+      const roomId = `room_${i.toString().padStart(2, '0')}`;
+      const roomName = `Room ${i}`;
+      roomsToCreate.push({
+        room_id: roomId,
+        room_name: roomName,
+        seats: [
+          { playerId: null, userId: null, name: null, connected: false, ready: false },
+          { playerId: null, userId: null, name: null, connected: false, ready: false },
+          { playerId: null, userId: null, name: null, connected: false, ready: false },
+          { playerId: null, userId: null, name: null, connected: false, ready: false }
+        ]
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('thirteen_rooms')
+      .insert(roomsToCreate);
+
+    if (error) {
+      console.error('Error creating rooms:', error);
+    } else {
+      console.log(`Successfully created ${roomsToCreate.length} rooms`);
+    }
+  } catch (err) {
+    console.error('Error in initializeRooms:', err);
+  }
+}
+
 function setupSocketHandlers(io, supabase) {
+  // Initialize rooms on server start
+  initializeRooms(supabase);
+
   // Inject the database loader function
   setDatabaseLoader((roomId) => loadRoomFromDB(roomId, supabase));
 
@@ -298,10 +375,34 @@ function setupSocketHandlers(io, supabase) {
     socket.on("join_room", async (roomId, name, userId) => {
       try {
         // Load room from database first
-        const dbRoom = await loadRoomFromDB(roomId, supabase);
+        let dbRoom = await loadRoomFromDB(roomId, supabase);
         if (!dbRoom) {
-          socket.emit("error", "Room not found");
-          return;
+          console.log(`Room ${roomId} not found in database, creating it...`);
+          // Create room if it doesn't exist
+          const roomName = `Room ${roomId.split('_')[1] || roomId}`;
+          const { data, error } = await supabase
+            .from('thirteen_rooms')
+            .insert({
+              room_id: roomId,
+              room_name: roomName,
+              seats: [
+                { playerId: null, userId: null, name: null, connected: false, ready: false },
+                { playerId: null, userId: null, name: null, connected: false, ready: false },
+                { playerId: null, userId: null, name: null, connected: false, ready: false },
+                { playerId: null, userId: null, name: null, connected: false, ready: false }
+              ]
+            })
+            .select()
+            .single();
+
+          if (error) {
+            console.error('Error creating room:', error);
+            socket.emit("error", "Failed to create room");
+            return;
+          }
+
+          dbRoom = data;
+          console.log(`Created new room: ${roomId}`);
         }
 
         // Get or create room in memory
