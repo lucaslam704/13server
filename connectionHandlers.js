@@ -1,6 +1,5 @@
 import { rooms } from './roomManager.js';
-import { saveRoomToDB, deleteRoomFromDB, getRoomsFromDB } from './databaseHelpers.js';
-import { makeBotMove } from './botLogic.js';
+import { saveRoomToDB, getRoomsFromDB } from './databaseHelpers.js';
 import { createCleanRoomData } from './roomHelpers.js';
 
 function setupConnectionHandlers(io, supabase) {
