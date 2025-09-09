@@ -295,10 +295,8 @@ function compareSpecialCombinations(newCombo, currentCombo) {
 // Get all valid moves for a player
 function getValidMoves(playerHand, currentCombo) {
   const validMoves = [];
-  console.log(`[DEBUG] getValidMoves called with hand: [${playerHand.join(', ')}], currentCombo:`, currentCombo);
 
   if (!currentCombo) {
-    console.log(`[DEBUG] No current combo, finding any valid combinations`);
     // Any valid combination is allowed
     for (let i = 1; i <= playerHand.length; i++) {
       const combinations = generateCombinations(playerHand, i);
@@ -309,7 +307,6 @@ function getValidMoves(playerHand, currentCombo) {
       });
     }
   } else {
-    console.log(`[DEBUG] Current combo exists, type: ${currentCombo.type}, finding matching combinations`);
     // Must match current combination type
     const requiredType = currentCombo.type;
     let comboSize;
@@ -323,13 +320,10 @@ function getValidMoves(playerHand, currentCombo) {
       // Note: double_sequence not implemented in validateCombination
       // case 'double_sequence': comboSize = currentCombo.length * 2; break;
       default:
-        console.log(`[DEBUG] Unknown combination type: ${requiredType}`);
         return validMoves;
     }
 
-    console.log(`[DEBUG] Looking for ${requiredType} combinations of size ${comboSize}`);
     const combinations = generateCombinations(playerHand, comboSize);
-    console.log(`[DEBUG] Generated ${combinations.length} possible combinations`);
 
     combinations.forEach(combo => {
       const validatedCombo = validateCombination(combo);
@@ -340,7 +334,6 @@ function getValidMoves(playerHand, currentCombo) {
     });
   }
 
-  console.log(`[DEBUG] Found ${validMoves.length} valid moves`);
   return validMoves;
 }
 

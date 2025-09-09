@@ -26,4 +26,4 @@ global.supabase = supabase;
 // Setup all socket event handlers
 setupSocketHandlers(io, supabase);
 
-httpServer.listen(3000, () => console.log("Server running on port 3000"));
+httpServer.listen(3000);
