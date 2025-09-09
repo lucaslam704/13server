@@ -33,14 +33,20 @@ async function saveRoomToDB(room, supabaseClient) {
       return { success: true, inMemoryOnly: true };
     }
 
+    // Get connected socket IDs for better tracking
+    const connectedSocketIds = [];
+    room.players.forEach(p => connectedSocketIds.push(p.id));
+    room.viewers.forEach(v => connectedSocketIds.push(v.id));
+
     const upsertData = {
       room_id: room.id,
       room_owner_id: roomOwnerId,
       room_owner_name: room.name,
-      max_players: 4,
       current_players: room.players.length + room.viewers.length,
+      active_connections: connectedSocketIds.length,
       players_in_seats: room.players.map(p => p.userId && p.userId !== p.id ? p.userId : null).filter(id => id !== null),
       spectators: room.viewers.map(v => v.userId && v.userId !== v.id ? v.userId : null).filter(id => id !== null),
+      connected_socket_ids: connectedSocketIds,
       game_started: room.gameStarted,
       game_state: {
         pile: room.pile,
@@ -53,7 +59,7 @@ async function saveRoomToDB(room, supabaseClient) {
         deckShuffled: room.deckShuffled
       },
       is_active: true,
-      updated_at: new Date().toISOString()
+      last_activity: new Date().toISOString()
     };
 
     console.log('Attempting to upsert room data:', JSON.stringify(upsertData, null, 2));
@@ -197,18 +203,67 @@ function setupSocketHandlers(io, supabase) {
   // Inject the database loader function
   setDatabaseLoader((roomId) => loadRoomFromDB(roomId, supabase));
 
-  // Periodic cleanup of empty rooms (every 5 minutes)
+  // Improved periodic cleanup of empty rooms (every 2 minutes)
   setInterval(async () => {
     console.log('Running periodic room cleanup...');
+    const now = Date.now();
+
     for (const [roomId, room] of rooms) {
       const totalPlayers = room.players.length + room.viewers.length;
+
+      // Clean up rooms with no players immediately
       if (totalPlayers === 0) {
         console.log(`Cleaning up empty room: ${roomId}`);
         await deleteRoomFromDB(roomId, supabase);
         rooms.delete(roomId);
+        continue;
+      }
+
+      // Clean up rooms that have been inactive for more than 10 minutes
+      const lastActivity = room.lastActivity || room.created;
+      const inactiveTime = now - lastActivity;
+      if (inactiveTime > 10 * 60 * 1000) { // 10 minutes
+        console.log(`Cleaning up inactive room: ${roomId} (${Math.round(inactiveTime / 60000)} minutes inactive)`);
+        await deleteRoomFromDB(roomId, supabase);
+        rooms.delete(roomId);
+        continue;
+      }
+
+      // Update room activity in database if there are active players
+      if (totalPlayers > 0) {
+        try {
+          await supabase
+            .from('thirteen_rooms')
+            .update({
+              last_activity: new Date().toISOString(),
+              active_connections: totalPlayers
+            })
+            .eq('room_id', roomId);
+        } catch (error) {
+          console.error(`Failed to update activity for room ${roomId}:`, error);
+        }
       }
     }
-  }, 5 * 60 * 1000); // 5 minutes
+
+    // Also clean up database entries that have no active connections
+    try {
+      const { data: inactiveRooms } = await supabase
+        .from('thirteen_rooms')
+        .select('room_id')
+        .eq('is_active', true)
+        .lt('last_activity', new Date(Date.now() - 15 * 60 * 1000).toISOString()) // 15 minutes ago
+        .eq('active_connections', 0);
+
+      if (inactiveRooms && inactiveRooms.length > 0) {
+        console.log(`Found ${inactiveRooms.length} inactive rooms in database to clean up`);
+        for (const dbRoom of inactiveRooms) {
+          await deleteRoomFromDB(dbRoom.room_id, supabase);
+        }
+      }
+    } catch (error) {
+      console.error('Error during database cleanup:', error);
+    }
+  }, 2 * 60 * 1000); // 2 minutes
 
   io.on("connection", (socket) => {
     console.log("Connected:", socket.id);
