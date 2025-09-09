@@ -1,5 +1,5 @@
 import { rooms } from './roomManager.js';
-import { saveRoomToDB, deleteRoomFromDB } from './databaseHelpers.js';
+import { saveRoomToDB } from './databaseHelpers.js';
 
 // Helper function to fetch and update profile pictures for players
 async function updatePlayerProfilePics(room, supabaseClient) {
