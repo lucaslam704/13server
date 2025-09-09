@@ -262,8 +262,10 @@ function setupSocketHandlers(io, supabase) {
       });
       room.chairs[0] = socket.id;
 
-      // Save to database (will use authenticatedUserId if available)
-      await saveRoomToDB(room, supabase);
+      // Save to database asynchronously (don't block room creation)
+      saveRoomToDB(room, supabase).catch(err => {
+        console.error('Failed to save room to database:', err);
+      });
 
       // Update profile pictures for players
       await updatePlayerProfilePics(room, supabase);
@@ -278,14 +280,15 @@ function setupSocketHandlers(io, supabase) {
     });
 
     socket.on("join_room", async (roomId, name, userId) => {
-      const room = await getRoom(roomId);
-      if (!room) {
-        // Room might have been cleaned up, emit a more user-friendly message
-        socket.emit("error", "Room is no longer available");
-        return;
-      }
+      try {
+        const room = await getRoom(roomId);
+        if (!room) {
+          // Room doesn't exist, emit error and stop
+          socket.emit("error", "Room not found");
+          return;
+        }
 
-      socket.join(roomId);
+        socket.join(roomId);
 
       // Ensure room properties are initialized
       if (!room.players) room.players = [];
@@ -322,9 +325,13 @@ function setupSocketHandlers(io, supabase) {
       io.to(roomId).emit("room_update", room);
       socket.emit("room_joined", room);
 
-      // Broadcast updated room list to all clients
-      const roomsList = await getRoomsFromDB(supabase);
-      io.emit("rooms_list", roomsList);
+        // Broadcast updated room list to all clients
+        const roomsList = await getRoomsFromDB(supabase);
+        io.emit("rooms_list", roomsList);
+      } catch (error) {
+        console.error('Error in join_room handler:', error);
+        socket.emit("error", "Failed to join room");
+      }
     });
 
     socket.on("sit_chair", async (roomId, chairIndex) => {
