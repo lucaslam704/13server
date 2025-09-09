@@ -101,7 +101,6 @@ function createCleanRoomData(room) {
       name: p.name,
       hand: p.hand,
       connected: p.connected,
-      chair: p.chair,
       ready: p.ready,
       isBot: p.isBot,
       profilePic: p.profilePic
@@ -111,7 +110,6 @@ function createCleanRoomData(room) {
       userId: v.userId,
       name: v.name
     })),
-    chairs: room.chairs,
     pile: room.pile,
     turn: room.turn,
     currentCombination: room.currentCombination,

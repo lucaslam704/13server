@@ -13,33 +13,24 @@ async function saveRoomToDB(room, supabaseClient) {
       if (p.connected) connectedSocketIds.push(p.id);
     });
 
-    // Prepare seats data for database
-    const seatsData = room.chairs.map((chairPlayerId, index) => {
-      if (chairPlayerId) {
-        const player = room.players.find(p => p.id === chairPlayerId);
-        return {
-          playerId: player ? player.id : null,
-          userId: player ? player.userId : null,
-          name: player ? player.name : null,
-          connected: player ? player.connected : false,
-          ready: player ? player.ready : false
-        };
-      }
-      return {
-        playerId: null,
-        userId: null,
-        name: null,
-        connected: false,
-        ready: false
-      };
-    });
+    // Prepare players data for database
+    const playersData = room.players.map(player => ({
+      id: player.id,
+      userId: player.userId,
+      name: player.name,
+      hand: player.hand,
+      connected: player.connected,
+      ready: player.ready,
+      isBot: player.isBot,
+      profilePic: player.profilePic
+    }));
 
     const upsertData = {
       room_id: room.id,
       room_name: room.name,
       current_players: room.players.filter(p => p.connected).length,
       active_connections: connectedSocketIds.length,
-      seats: seatsData,
+      players: playersData,
       connected_socket_ids: connectedSocketIds,
       game_started: room.gameStarted,
       game_state: {

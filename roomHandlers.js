@@ -30,7 +30,6 @@ function setupRoomHandlers(io, supabase) {
             name: dbRoom.room_name,
             players: [],
             viewers: [],
-            chairs: [null, null, null, null],
             pile: [],
             turn: null,
             currentCombination: null,
@@ -44,26 +43,18 @@ function setupRoomHandlers(io, supabase) {
             lastActivity: Date.now()
           };
 
-          // Load seats from database
-          if (dbRoom.seats) {
-            room.players = [];
-            room.chairs = [null, null, null, null];
-
-            dbRoom.seats.forEach((seat, index) => {
-              if (seat.playerId) {
-                room.players.push({
-                  id: seat.playerId,
-                  userId: seat.userId,
-                  name: seat.name,
-                  hand: [],
-                  connected: seat.connected,
-                  chair: index,
-                  ready: seat.ready,
-                  isBot: false
-                });
-                room.chairs[index] = seat.playerId;
-              }
-            });
+          // Load players from database
+          if (dbRoom.players && Array.isArray(dbRoom.players)) {
+            room.players = dbRoom.players.map(player => ({
+              id: player.id,
+              userId: player.userId,
+              name: player.name,
+              hand: player.hand || [],
+              connected: player.connected || false,
+              ready: player.ready || false,
+              isBot: player.isBot || false,
+              profilePic: player.profilePic || null
+            }));
           }
 
           // Load game state from database
@@ -108,29 +99,20 @@ function setupRoomHandlers(io, supabase) {
         }
 
         if (isReconnecting) {
-          // Reconnecting to existing seat
+          // Reconnecting to existing player
           room.players[seatIndex].connected = true;
           room.players[seatIndex].id = socket.id; // Update socket ID
         } else {
-          // Find empty seat
-          seatIndex = room.chairs.findIndex(chair => chair === null);
-          if (seatIndex === -1) {
-            socket.emit("error", "All seats are occupied");
-            return;
-          }
-
-          // Take the seat
+          // Add new player (unlimited players allowed)
           room.players.push({
             id: socket.id,
             userId: authenticatedUserId,
             name: name,
             hand: [],
             connected: true,
-            chair: seatIndex,
             ready: false,
             isBot: false
           });
-          room.chairs[seatIndex] = socket.id;
         }
 
         // Save updated room to database
@@ -269,9 +251,9 @@ function setupRoomHandlers(io, supabase) {
       }
       room.countdownTime = null;
 
-      // Check if all seated players are ready and connected
-      const seatedPlayers = room.players.filter(p => p.chair !== null && p.connected);
-      const allReady = seatedPlayers.length >= 2 && seatedPlayers.every(p => p.ready);
+      // Check if all connected players are ready
+      const connectedPlayers = room.players.filter(p => p.connected);
+      const allReady = connectedPlayers.length >= 2 && connectedPlayers.every(p => p.ready);
 
       if (allReady && !room.gameStarted) {
         // Start 6-second countdown to game start
