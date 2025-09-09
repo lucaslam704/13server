@@ -483,16 +483,75 @@ function setupSocketHandlers(io, supabase) {
       const otherPlayersReady = seatedPlayers.filter(p => p.id !== socket.id).every(p => p.ready);
       if (!otherPlayersReady) return; // All other players must be ready
 
-      // Start game but don't deal cards yet - wait for animation to complete
+      // Reset game state completely before starting new game
       room.gameStarted = true;
       room.pile = [];
       room.currentCombination = null;
       room.winner = null;
       room.passes = [];
+      room.lastPlayer = null;
+      room.turn = null;
       room.round = 1; // Reset round counter to 1
       room.deckShuffled = true; // Flag to indicate deck is ready
 
+      // Clear all players' hands to ensure clean slate
+      room.players.forEach(player => {
+        player.hand = [];
+        player.ready = false; // Reset ready status for new game
+      });
+
+      console.log(`Game restarted in room ${roomId} with ${seatedPlayers.length} players`);
       io.to(roomId).emit("game_started", room);
+    });
+
+    // Add explicit restart_game handler for better game restart flow
+    socket.on("restart_game", async (roomId) => {
+      const room = await getRoom(roomId);
+      if (!room) return;
+
+      // Check if user is the room owner (compare with authenticated user ID or socket ID)
+      const isOwner = room.players.some(p => p.id === socket.id && (p.userId === room.owner || p.id === room.owner));
+      if (!isOwner) {
+        socket.emit("error", "Only the room owner can restart the game");
+        return;
+      }
+
+      // Ensure room properties are initialized
+      if (!room.players) room.players = [];
+
+      // Check if there are enough seated players
+      const seatedPlayers = room.players.filter(p => p.chair !== null);
+      if (seatedPlayers.length < 2) {
+        socket.emit("error", "Need at least 2 players to restart the game");
+        return;
+      }
+
+      // Reset game state completely
+      room.gameStarted = true;
+      room.pile = [];
+      room.currentCombination = null;
+      room.winner = null;
+      room.passes = [];
+      room.lastPlayer = null;
+      room.turn = null;
+      room.round = 1;
+      room.deckShuffled = true;
+
+      // Clear all players' hands and reset ready status
+      room.players.forEach(player => {
+        player.hand = [];
+        player.ready = false;
+      });
+
+      console.log(`Game explicitly restarted in room ${roomId}`);
+
+      // Emit restart event first
+      io.to(roomId).emit("game_restarted", room);
+
+      // Small delay before emitting game_started to allow client to process restart
+      setTimeout(() => {
+        io.to(roomId).emit("game_started", room);
+      }, 100);
     });
 
     // New event to deal cards after animation completes
