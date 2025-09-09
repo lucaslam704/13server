@@ -6,7 +6,7 @@ import { setupGameHandlers } from './gameHandlers.js';
 import { setupPlayHandlers } from './playHandlers.js';
 import { setupBotHandlers } from './botHandlers.js';
 import { setupConnectionHandlers } from './connectionHandlers.js';
-import { deleteRoomFromDB, loadRoomFromDB, getRoomsFromDB } from './databaseHelpers.js';
+import { loadRoomFromDB, getRoomsFromDB } from './databaseHelpers.js';
 
 function setupSocketHandlers(io, supabase) {
   // Initialize rooms on server start
@@ -30,21 +30,41 @@ function setupSocketHandlers(io, supabase) {
     for (const [roomId, room] of rooms) {
       const totalPlayers = room.players.length + room.viewers.length;
 
-      // Clean up rooms with no players immediately
+      // Reset rooms with no players back to default state
       if (totalPlayers === 0) {
-        console.log(`Cleaning up empty room: ${roomId}`);
-        await deleteRoomFromDB(roomId, supabase);
-        rooms.delete(roomId);
+        console.log(`Resetting empty room: ${roomId} to default state`);
+        // Reset room in memory
+        room.players = [];
+        room.viewers = [];
+        room.pile = [];
+        room.turn = null;
+        room.currentCombination = null;
+        room.gameStarted = false;
+        room.winner = null;
+        room.passes = [];
+        room.lastPlayer = null;
+        room.round = 1;
+        room.deckShuffled = false;
         continue;
       }
 
-      // Clean up rooms that have been inactive for more than 10 minutes
+      // Reset rooms that have been inactive for more than 10 minutes
       const lastActivity = room.lastActivity || room.created;
       const inactiveTime = now - lastActivity;
       if (inactiveTime > 10 * 60 * 1000) { // 10 minutes
-        console.log(`Cleaning up inactive room: ${roomId} (${Math.round(inactiveTime / 60000)} minutes inactive)`);
-        await deleteRoomFromDB(roomId, supabase);
-        rooms.delete(roomId);
+        console.log(`Resetting inactive room: ${roomId} (${Math.round(inactiveTime / 60000)} minutes inactive)`);
+        // Reset room in memory to default state
+        room.players = [];
+        room.viewers = [];
+        room.pile = [];
+        room.turn = null;
+        room.currentCombination = null;
+        room.gameStarted = false;
+        room.winner = null;
+        room.passes = [];
+        room.lastPlayer = null;
+        room.round = 1;
+        room.deckShuffled = false;
         continue;
       }
 
@@ -64,23 +84,8 @@ function setupSocketHandlers(io, supabase) {
       }
     }
 
-    // Also clean up database entries that have no active connections
-    try {
-      const { data: inactiveRooms } = await supabase
-        .from('thirteen_rooms')
-        .select('room_id')
-        .lt('id', 1000) // This will never match since we have only 10 rooms, effectively disabling this cleanup
-        .eq('active_connections', 0);
-
-      if (inactiveRooms && inactiveRooms.length > 0) {
-        console.log(`Found ${inactiveRooms.length} inactive rooms in database to clean up`);
-        for (const dbRoom of inactiveRooms) {
-          await deleteRoomFromDB(dbRoom.room_id, supabase);
-        }
-      }
-    } catch (error) {
-      console.error('Error during database cleanup:', error);
-    }
+    // Note: We don't delete rooms from database - the 10 pre-created rooms should always exist
+    // They get reset to default state when empty, but the records remain
   }, 2 * 60 * 1000); // 2 minutes
 }
 

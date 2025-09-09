@@ -96,25 +96,6 @@ async function loadRoomFromDB(roomId, supabaseClient) {
   }
 }
 
-async function deleteRoomFromDB(roomId, supabaseClient) {
-  try {
-    const { error } = await supabaseClient
-      .from('thirteen_rooms')
-      .delete()
-      .eq('room_id', roomId);
-
-    if (error) {
-      console.error('Error deleting room from DB:', error);
-      return { success: false, error };
-    }
-
-    console.log('Successfully deleted room from database:', roomId);
-    return { success: true };
-  } catch (err) {
-    console.error('Error in deleteRoomFromDB:', err);
-    return { success: false, error: err };
-  }
-}
 
 async function getRoomsFromDB(supabaseClient) {
   try {
@@ -163,4 +144,4 @@ function getDefaultRooms() {
   return defaultRooms;
 }
 
-export { saveRoomToDB, loadRoomFromDB, deleteRoomFromDB, getRoomsFromDB, getDefaultRooms };
+export { saveRoomToDB, loadRoomFromDB, getRoomsFromDB, getDefaultRooms };
