@@ -38,10 +38,14 @@ async function saveRoomToDB(room, supabaseClient) {
     room.players.forEach(p => connectedSocketIds.push(p.id));
     room.viewers.forEach(v => connectedSocketIds.push(v.id));
 
+    // Get the room owner's display name
+    const roomOwnerPlayer = room.players.find(p => p.id === room.owner || p.userId === room.owner);
+    const roomOwnerName = roomOwnerPlayer ? roomOwnerPlayer.name : room.name || 'Unknown';
+
     const upsertData = {
       room_id: room.id,
       room_owner_id: roomOwnerId,
-      room_owner_name: room.name,
+      room_owner_name: roomOwnerName,
       current_players: room.players.length + room.viewers.length,
       active_connections: connectedSocketIds.length,
       players_in_seats: room.players.map(p => p.userId && p.userId !== p.id ? p.userId : null).filter(id => id !== null),
@@ -599,12 +603,13 @@ function setupSocketHandlers(io, supabase) {
       // Check if there are enough seated players
       const seatedPlayers = room.players.filter(p => p.chair !== null);
       if (seatedPlayers.length < 2) {
-        socket.emit("error", "Need at least 2 players to restart the game");
-        return;
+        // Allow single player to restart (for testing/development)
+        console.log(`Allowing single player restart in room ${roomId}`);
       }
 
       // Check if all OTHER seated players are ready (exclude owner)
-      const otherPlayersReady = seatedPlayers.filter(p => p.id !== socket.id).every(p => p.ready);
+      const otherPlayers = seatedPlayers.filter(p => p.id !== socket.id);
+      const otherPlayersReady = otherPlayers.length === 0 || otherPlayers.every(p => p.ready);
       if (!otherPlayersReady) {
         socket.emit("error", "All other players must be ready to restart the game");
         return;
