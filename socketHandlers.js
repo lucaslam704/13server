@@ -36,7 +36,7 @@ async function saveRoomToDB(room, supabaseClient) {
     const upsertData = {
       room_id: room.id,
       room_owner_id: roomOwnerId,
-      room_name: room.name,
+      room_owner_name: room.name,
       max_players: 4,
       current_players: room.players.length + room.viewers.length,
       players_in_seats: room.players.map(p => p.userId && p.userId !== p.id ? p.userId : null).filter(id => id !== null),
@@ -196,6 +196,19 @@ async function updatePlayerProfilePics(room, supabaseClient) {
 function setupSocketHandlers(io, supabase) {
   // Inject the database loader function
   setDatabaseLoader((roomId) => loadRoomFromDB(roomId, supabase));
+
+  // Periodic cleanup of empty rooms (every 5 minutes)
+  setInterval(async () => {
+    console.log('Running periodic room cleanup...');
+    for (const [roomId, room] of rooms) {
+      const totalPlayers = room.players.length + room.viewers.length;
+      if (totalPlayers === 0) {
+        console.log(`Cleaning up empty room: ${roomId}`);
+        await deleteRoomFromDB(roomId, supabase);
+        rooms.delete(roomId);
+      }
+    }
+  }, 5 * 60 * 1000); // 5 minutes
 
   io.on("connection", (socket) => {
     console.log("Connected:", socket.id);
@@ -526,11 +539,19 @@ function setupSocketHandlers(io, supabase) {
         return;
       }
 
+      // Check if all OTHER seated players are ready (exclude owner)
+      const otherPlayersReady = seatedPlayers.filter(p => p.id !== socket.id).every(p => p.ready);
+      if (!otherPlayersReady) {
+        socket.emit("error", "All other players must be ready to restart the game");
+        return;
+      }
+
       // Reset game state completely
       room.gameStarted = true;
       room.pile = [];
       room.currentCombination = null;
       room.winner = null;
+      room.winnerLastCards = null; // Clear winner's last cards
       room.passes = [];
       room.lastPlayer = null;
       room.turn = null;
@@ -543,7 +564,7 @@ function setupSocketHandlers(io, supabase) {
         player.ready = false;
       });
 
-      console.log(`Game explicitly restarted in room ${roomId}`);
+      console.log(`Game explicitly restarted in room ${roomId} with ready check`);
 
       // Emit restart event first
       io.to(roomId).emit("game_restarted", room);
@@ -617,8 +638,9 @@ function setupSocketHandlers(io, supabase) {
       // Check if player won
       if (player.hand.length === 0) {
         room.winner = player.id;
+        room.winnerLastCards = cards; // Store the winning cards
         room.gameStarted = false;
-        console.log(`[DEBUG] Player ${player.name} won the game!`);
+        console.log(`[DEBUG] Player ${player.name} won the game with cards: [${cards.join(', ')}]`);
       } else {
         // Move to next player
         const currentIdx = room.players.findIndex(p => p.id === socket.id);
@@ -773,6 +795,7 @@ function setupSocketHandlers(io, supabase) {
           }
           room.players.splice(playerIndex, 1);
           roomChanged = true;
+          console.log(`Removed player ${socket.id} from room ${roomId}`);
         }
 
         // Remove from viewers
@@ -780,6 +803,7 @@ function setupSocketHandlers(io, supabase) {
         room.viewers = room.viewers.filter(v => v.id !== socket.id);
         if (viewerCountBefore !== room.viewers.length) {
           roomChanged = true;
+          console.log(`Removed viewer ${socket.id} from room ${roomId}`);
         }
 
         // If room owner disconnected, assign new owner to first human player
@@ -787,9 +811,11 @@ function setupSocketHandlers(io, supabase) {
           const humanPlayers = room.players.filter(p => !p.isBot);
           if (humanPlayers.length > 0) {
             room.owner = humanPlayers[0].id;
+            console.log(`Transferred ownership to ${humanPlayers[0].id} in room ${roomId}`);
           } else if (room.players.length > 0) {
             // If no human players, assign to first bot
             room.owner = room.players[0].id;
+            console.log(`Transferred ownership to bot ${room.players[0].id} in room ${roomId}`);
           }
           // If no players at all, ownership remains with disconnected player
           // It will be restored when they reconnect
@@ -808,15 +834,18 @@ function setupSocketHandlers(io, supabase) {
         // Save room changes to database
         if (roomChanged) {
           await saveRoomToDB(room, supabase);
+          console.log(`Saved room changes for ${roomId} to database`);
         }
 
         // Broadcast room update to remaining players
         io.to(roomId).emit("room_update", room);
+        console.log(`Broadcasted room update for ${roomId} with ${room.players.length} players and ${room.viewers.length} viewers`);
       }
 
       // Broadcast updated room list to all clients
       const roomsList = await getRoomsFromDB(supabase);
       io.emit("rooms_list", roomsList);
+      console.log(`Broadcasted updated room list`);
     });
   });
 }
