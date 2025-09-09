@@ -470,6 +470,13 @@ function setupSocketHandlers(io, supabase) {
 
       room.chairs[chairIndex] = socket.id;
 
+      // Reset countdown when someone joins a seat
+      if (room.countdownInterval) {
+        clearInterval(room.countdownInterval);
+        room.countdownInterval = null;
+      }
+      room.countdownTime = null;
+
       // Save to database
       await saveRoomToDB(room, supabase);
 
@@ -499,6 +506,13 @@ function setupSocketHandlers(io, supabase) {
       room.players.splice(playerIndex, 1);
       room.chairs[chairIndex] = null;
 
+      // Reset countdown when someone leaves a seat
+      if (room.countdownInterval) {
+        clearInterval(room.countdownInterval);
+        room.countdownInterval = null;
+      }
+      room.countdownTime = null;
+
       // Add back to viewers
       room.viewers.push({
         id: socket.id,
@@ -519,7 +533,61 @@ function setupSocketHandlers(io, supabase) {
       const player = room.players.find(p => p.id === socket.id);
       if (!player) return;
 
+      // Toggle ready status
       player.ready = !player.ready;
+
+      // Reset countdown when someone toggles ready (on or off)
+      if (room.countdownInterval) {
+        clearInterval(room.countdownInterval);
+        room.countdownInterval = null;
+      }
+      room.countdownTime = null;
+
+      // Check if all seated players are ready and connected
+      const seatedPlayers = room.players.filter(p => p.chair !== null && p.connected);
+      const allReady = seatedPlayers.length >= 2 && seatedPlayers.every(p => p.ready);
+
+      if (allReady && !room.gameStarted) {
+        // Start 6-second countdown
+        room.countdownTime = 6;
+
+        // Emit initial countdown
+        io.to(roomId).emit("countdown_update", room.countdownTime);
+
+        room.countdownInterval = setInterval(() => {
+          room.countdownTime--;
+
+          if (room.countdownTime <= 0) {
+            // Time's up - start the game
+            clearInterval(room.countdownInterval);
+            room.countdownInterval = null;
+            room.countdownTime = null;
+
+            // Start game logic (same as before)
+            room.gameStarted = true;
+            room.pile = [];
+            room.currentCombination = null;
+            room.winner = null;
+            room.passes = [];
+            room.lastPlayer = null;
+            room.turn = null;
+            room.round = 1;
+            room.deckShuffled = true;
+
+            // Clear all players' hands and reset ready status
+            room.players.forEach(player => {
+              player.hand = [];
+              player.ready = false;
+            });
+
+            io.to(roomId).emit("game_started", room);
+          } else {
+            // Emit countdown update
+            io.to(roomId).emit("countdown_update", room.countdownTime);
+          }
+        }, 1000);
+      }
+
       io.to(roomId).emit("room_update", room);
     });
 
@@ -858,6 +926,13 @@ function setupSocketHandlers(io, supabase) {
           player.connected = false;
           roomChanged = true;
           console.log(`Marked player ${socket.id} as disconnected in room ${roomId}`);
+
+          // Reset countdown when someone disconnects
+          if (room.countdownInterval) {
+            clearInterval(room.countdownInterval);
+            room.countdownInterval = null;
+          }
+          room.countdownTime = null;
 
           // If it was this player's turn and game is in progress, auto-pass after 2 seconds
           if (room.gameStarted && room.turn === socket.id) {
