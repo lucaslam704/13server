@@ -29,9 +29,40 @@ function setupSocketHandlers(io, supabase) {
 
     for (const [roomId, room] of rooms) {
       const totalPlayers = room.players.length + room.viewers.length;
+      const connectedPlayers = room.players.filter(p => p.connected).length;
+      const connectedViewers = room.viewers.filter(v => v.connected).length;
+      const totalConnected = connectedPlayers + connectedViewers;
+
+      console.log(`Room ${roomId}: ${totalPlayers} total (${connectedPlayers} connected players, ${connectedViewers} connected viewers), ${totalConnected} total connected`);
+
+      // Clean up disconnected users from arrays (remove users disconnected for more than 30 seconds)
+      const now = Date.now();
+      room.players = room.players.filter(player => {
+        if (!player.connected && player.disconnectedAt && (now - player.disconnectedAt) > 30000) {
+          console.log(`Removing disconnected player ${player.id} from room ${roomId}`);
+          return false;
+        }
+        return true;
+      });
+
+      room.viewers = room.viewers.filter(viewer => {
+        if (!viewer.connected && viewer.disconnectedAt && (now - viewer.disconnectedAt) > 30000) {
+          console.log(`Removing disconnected viewer ${viewer.id} from room ${roomId}`);
+          return false;
+        }
+        return true;
+      });
+
+      // Recalculate counts after cleanup
+      const cleanedTotalPlayers = room.players.length + room.viewers.length;
+      const cleanedConnectedPlayers = room.players.filter(p => p.connected).length;
+      const cleanedConnectedViewers = room.viewers.filter(v => v.connected).length;
+      const cleanedTotalConnected = cleanedConnectedPlayers + cleanedConnectedViewers;
+
+      console.log(`After cleanup: ${cleanedTotalPlayers} total (${cleanedConnectedPlayers} connected players, ${cleanedConnectedViewers} connected viewers), ${cleanedTotalConnected} total connected`);
 
       // Reset rooms with no active connections back to default state
-      if (totalPlayers === 0) {
+      if (cleanedTotalConnected === 0) {
         console.log(`Resetting empty room: ${roomId} to default state`);
         // Reset room in memory
         room.players = [];

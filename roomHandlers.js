@@ -127,6 +127,9 @@ function setupRoomHandlers(io, supabase) {
         // Save updated room to database
         await saveRoomToDB(room, supabase);
 
+        // Update profile pictures for players (including the new player)
+        await updatePlayerProfilePics(room, supabase);
+
         // Create clean room data for socket emission (avoid circular references)
         const cleanRoomData = createCleanRoomData(room);
 

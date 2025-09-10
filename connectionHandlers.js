@@ -18,6 +18,7 @@ function setupConnectionHandlers(io, supabase) {
         if (playerIndex !== -1) {
           const player = room.players[playerIndex];
           player.connected = false;
+          player.disconnectedAt = Date.now();
           roomChanged = true;
           console.log(`Marked player ${socket.id} as disconnected in room ${roomId}`);
 
@@ -101,6 +102,7 @@ function setupConnectionHandlers(io, supabase) {
         } else if (viewerIndex !== -1) {
           const viewer = room.viewers[viewerIndex];
           viewer.connected = false;
+          viewer.disconnectedAt = Date.now();
           roomChanged = true;
           console.log(`Marked viewer ${socket.id} as disconnected in room ${roomId}`);
         }
