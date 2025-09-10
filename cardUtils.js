@@ -42,33 +42,45 @@ export function dealCards(room) {
   const deck = generateDeck();
   shuffleDeck(deck);
 
-  const players = room.players.filter(p => p.chair !== null && p.connected); // Only deal to seated and connected players
+  // Deal to all connected players, regardless of seating
+  const players = room.players.filter(p => p.connected);
 
   if (players.length === 0) {
-    console.log(`No players to deal cards to in room ${room.id}`);
+    console.log(`No connected players to deal cards to in room ${room.id}`);
     return;
   }
+
+  console.log(`Dealing cards to ${players.length} connected players in room ${room.id}`);
 
   const cardsPerPlayer = Math.floor(deck.length / players.length);
   let cardIndex = 0;
 
-  players.forEach(player => {
+  players.forEach((player, index) => {
     if (player) {
-      player.hand = deck.slice(cardIndex, cardIndex + cardsPerPlayer);
-      cardIndex += cardsPerPlayer;
+      const startIndex = cardIndex;
+      const endIndex = startIndex + cardsPerPlayer;
+      player.hand = deck.slice(startIndex, endIndex);
+      cardIndex = endIndex;
+      console.log(`Player ${player.name} (${player.id}) received ${player.hand.length} cards`);
     }
   });
 
-  // Handle remaining cards
+  // Handle remaining cards (distribute evenly)
+  let remainingCardIndex = 0;
   while (cardIndex < deck.length && players.length > 0) {
-    const playerIndex = (cardIndex - (players.length * cardsPerPlayer)) % players.length;
+    const playerIndex = remainingCardIndex % players.length;
     if (players[playerIndex]) {
       players[playerIndex].hand.push(deck[cardIndex]);
+      console.log(`Extra card ${deck[cardIndex]} given to ${players[playerIndex].name}`);
     }
     cardIndex++;
+    remainingCardIndex++;
   }
 
-  console.log(`Dealt cards to ${players.length} players in room ${room.id}`);
+  console.log(`Finished dealing cards. Total cards dealt: ${deck.length}`);
+  players.forEach(player => {
+    console.log(`- ${player.name}: ${player.hand.length} cards`);
+  });
 }
 
 // Simple combination validation (basic implementation)

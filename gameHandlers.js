@@ -93,15 +93,28 @@ function setupGameHandlers(io, supabase) {
 
     // New event to deal cards after animation completes
     socket.on("deal_cards", async (roomId) => {
+      console.log(`deal_cards event received for room ${roomId}`);
       const room = await getRoom(roomId);
-      if (!room) return; // Room might have been cleaned up
-      if (!room.gameStarted || !room.deckShuffled) return;
+      if (!room) {
+        console.log(`Room ${roomId} not found for deal_cards`);
+        return; // Room might have been cleaned up
+      }
+      if (!room.gameStarted || !room.deckShuffled) {
+        console.log(`Game not started or deck not shuffled for room ${roomId}`);
+        return;
+      }
+
+      console.log(`Dealing cards to ${room.players.length} players in room ${roomId}`);
+      console.log(`Players before dealing:`, room.players.map(p => ({ name: p.name, connected: p.connected, handLength: p.hand?.length || 0 })));
 
       dealCards(room);
 
       // Set the first player
       room.turn = getStartingPlayerForRoom(room);
       room.deckShuffled = false; // Reset flag
+
+      console.log(`Cards dealt. Players after dealing:`, room.players.map(p => ({ name: p.name, handLength: p.hand?.length || 0, hand: p.hand })));
+      console.log(`First player (turn): ${room.turn}`);
 
       io.to(roomId).emit("cards_dealt", createCleanRoomData(room));
 

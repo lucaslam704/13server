@@ -18,10 +18,9 @@ async function saveRoomToDB(room, supabaseClient) {
       id: player.id,
       userId: player.userId,
       name: player.name,
-      hand: player.hand,
+      hand: player.hand || [],
       connected: player.connected,
       ready: player.ready,
-      isBot: player.isBot,
       profilePic: player.profilePic
     }));
 
