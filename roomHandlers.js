@@ -244,12 +244,16 @@ function setupRoomHandlers(io, supabase) {
       // Toggle ready status
       player.ready = !player.ready;
 
-      // Reset countdown when someone toggles ready (on or off)
-      if (room.countdownInterval) {
-        clearInterval(room.countdownInterval);
-        room.countdownInterval = null;
+      // If player toggled OFF ready, clear countdown immediately
+      if (!player.ready) {
+        if (room.countdownInterval) {
+          clearInterval(room.countdownInterval);
+          room.countdownInterval = null;
+        }
+        room.countdownTime = null;
+        // Emit countdown cleared
+        io.to(roomId).emit("countdown_update", null);
       }
-      room.countdownTime = null;
 
       // Check if all connected players are ready
       const connectedPlayers = room.players.filter(p => p.connected);
