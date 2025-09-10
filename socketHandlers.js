@@ -45,6 +45,33 @@ function setupSocketHandlers(io, supabase) {
         room.lastPlayer = null;
         room.round = 1;
         room.deckShuffled = false;
+
+        // Reset room in database
+        try {
+          await supabase
+            .from('thirteen_rooms')
+            .update({
+              players: [],
+              viewers: [],
+              game_started: false,
+              game_state: {
+                pile: [],
+                currentCombination: null,
+                turn: null,
+                passes: [],
+                lastPlayer: null,
+                winner: null,
+                round: 1,
+                deckShuffled: false
+              },
+              active_connections: 0,
+              last_activity: new Date().toISOString()
+            })
+            .eq('room_id', roomId);
+          console.log(`Reset room ${roomId} in database`);
+        } catch (error) {
+          console.error(`Failed to reset room ${roomId} in database:`, error);
+        }
         continue;
       }
 
@@ -65,6 +92,33 @@ function setupSocketHandlers(io, supabase) {
         room.lastPlayer = null;
         room.round = 1;
         room.deckShuffled = false;
+
+        // Reset room in database
+        try {
+          await supabase
+            .from('thirteen_rooms')
+            .update({
+              players: [],
+              viewers: [],
+              game_started: false,
+              game_state: {
+                pile: [],
+                currentCombination: null,
+                turn: null,
+                passes: [],
+                lastPlayer: null,
+                winner: null,
+                round: 1,
+                deckShuffled: false
+              },
+              active_connections: 0,
+              last_activity: new Date().toISOString()
+            })
+            .eq('room_id', roomId);
+          console.log(`Reset inactive room ${roomId} in database`);
+        } catch (error) {
+          console.error(`Failed to reset inactive room ${roomId} in database:`, error);
+        }
         continue;
       }
 
