@@ -13,9 +13,9 @@ async function updatePlayerProfilePics(room, supabaseClient) {
   const userIdsToFetch = [];
   const now = Date.now();
 
-  // Check players
+  // Check players (no bots in this game)
   room.players?.forEach(player => {
-    if (player.userId && !player.isBot) {
+    if (player.userId) {
       const cached = profilePicCache.get(player.userId);
       if (!cached || (now - cached.timestamp) > CACHE_DURATION) {
         userIdsToFetch.push(player.userId);
