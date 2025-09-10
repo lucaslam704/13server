@@ -138,6 +138,7 @@ function createCleanRoomData(room) {
     winnerLastCards: room.winnerLastCards,
     passes: room.passes,
     lastPlayer: room.lastPlayer,
+    lastTurn: room.lastTurn,
     deckShuffled: room.deckShuffled,
     round: room.round
   };

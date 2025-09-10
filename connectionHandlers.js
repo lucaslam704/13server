@@ -11,8 +11,10 @@ function setupConnectionHandlers(io, supabase) {
       for (const [roomId, room] of rooms) {
         let roomChanged = false;
 
-        // Find player in room
+        // Find player in room (could be in players or viewers)
         const playerIndex = room.players.findIndex(p => p.id === socket.id);
+        const viewerIndex = room.viewers.findIndex(v => v.id === socket.id);
+
         if (playerIndex !== -1) {
           const player = room.players[playerIndex];
           player.connected = false;
@@ -96,6 +98,11 @@ function setupConnectionHandlers(io, supabase) {
               }
             }, 2000); // 2 seconds delay
           }
+        } else if (viewerIndex !== -1) {
+          const viewer = room.viewers[viewerIndex];
+          viewer.connected = false;
+          roomChanged = true;
+          console.log(`Marked viewer ${socket.id} as disconnected in room ${roomId}`);
         }
 
         // Save room changes to database

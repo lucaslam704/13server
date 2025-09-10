@@ -41,6 +41,13 @@ function setupPlayHandlers(io, supabase) {
       if (player.hand.length === 0) {
         room.winner = player.id;
         room.winnerLastCards = cards; // Store the winning cards
+        room.lastTurn = {
+          playerId: player.id,
+          playerName: player.name,
+          cards: cards,
+          timestamp: Date.now(),
+          isWinningMove: true
+        }; // Store last turn information
         room.gameStarted = false;
       } else {
         // Move to next player

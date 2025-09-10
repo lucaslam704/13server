@@ -29,7 +29,7 @@ function setupRoomHandlers(io, supabase) {
             id: dbRoom.room_id,
             name: dbRoom.room_name,
             players: [],
-            viewers: [],
+            viewers: dbRoom.viewers || [],
             pile: [],
             turn: null,
             currentCombination: null,
@@ -51,10 +51,18 @@ function setupRoomHandlers(io, supabase) {
               name: player.name,
               hand: player.hand || [],
               connected: player.connected || false,
+              chair: player.chair || null,
               ready: player.ready || false,
               isBot: player.isBot || false,
               profilePic: player.profilePic || null
             }));
+          }
+
+          // Load viewers from database
+          if (dbRoom.viewers && Array.isArray(dbRoom.viewers)) {
+            room.viewers = dbRoom.viewers;
+          } else {
+            room.viewers = [];
           }
 
           // Load game state from database
@@ -103,13 +111,14 @@ function setupRoomHandlers(io, supabase) {
           room.players[seatIndex].connected = true;
           room.players[seatIndex].id = socket.id; // Update socket ID
         } else {
-          // Add new player (unlimited players allowed)
+          // Add new player as viewer first (they can choose to sit down later)
           room.players.push({
             id: socket.id,
             userId: authenticatedUserId,
             name: name,
             hand: [],
             connected: true,
+            chair: null, // Start as viewer
             ready: false,
             isBot: false
           });
@@ -153,24 +162,48 @@ function setupRoomHandlers(io, supabase) {
 
       // Find player in viewers
       const viewerIndex = room.viewers.findIndex(v => v.id === socket.id);
-      if (viewerIndex === -1) return;
+      if (viewerIndex !== -1) {
+        // Player is in viewers, move them to players
+        const viewer = room.viewers[viewerIndex];
+        room.viewers.splice(viewerIndex, 1);
 
-      const viewer = room.viewers[viewerIndex];
-      room.viewers.splice(viewerIndex, 1);
+        // Add to players and assign chair
+        room.players.push({
+          id: socket.id,
+          userId: viewer.userId, // Use the authenticated user UUID if available
+          name: viewer.name,
+          hand: [],
+          connected: true,
+          chair: chairIndex,
+          ready: false,
+          profilePic: null, // Will be updated when user data is fetched
+          isBot: false
+        });
 
-      // Add to players and assign chair
-      room.players.push({
-        id: socket.id,
-        userId: viewer.userId, // Use the authenticated user UUID if available
-        name: viewer.name,
-        hand: [],
-        connected: true,
-        chair: chairIndex,
-        ready: false,
-        profilePic: null // Will be updated when user data is fetched
-      });
-
-      room.chairs[chairIndex] = socket.id;
+        room.chairs[chairIndex] = socket.id;
+      } else {
+        // Player is not in viewers, check if they're already a player
+        const existingPlayerIndex = room.players.findIndex(p => p.id === socket.id);
+        if (existingPlayerIndex !== -1) {
+          // Player is already in players, just update their chair
+          room.players[existingPlayerIndex].chair = chairIndex;
+          room.chairs[chairIndex] = socket.id;
+        } else {
+          // New player, add them to players
+          room.players.push({
+            id: socket.id,
+            userId: authenticatedUserId,
+            name: name,
+            hand: [],
+            connected: true,
+            chair: chairIndex,
+            ready: false,
+            profilePic: null,
+            isBot: false
+          });
+          room.chairs[chairIndex] = socket.id;
+        }
+      }
 
       // Reset countdown when someone joins a seat
       if (room.countdownInterval) {
@@ -222,7 +255,8 @@ function setupRoomHandlers(io, supabase) {
       room.viewers.push({
         id: socket.id,
         userId: player.userId, // Use the authenticated user UUID if available
-        name: player.name
+        name: player.name,
+        connected: true
       });
 
       // Create clean room data for socket emission

@@ -31,6 +31,7 @@ async function saveRoomToDB(room, supabaseClient) {
       current_players: room.players.filter(p => p.connected).length,
       active_connections: connectedSocketIds.length,
       players: playersData,
+      viewers: room.viewers || [],
       connected_socket_ids: connectedSocketIds,
       game_started: room.gameStarted,
       game_state: {
