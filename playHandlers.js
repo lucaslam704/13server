@@ -1,6 +1,6 @@
 import { getRoom } from './roomManager.js';
 import { validateCombination, canBeatCombination } from './cardUtils.js';
-import { makeBotMove } from './botLogic.js';
+// Bot functionality removed - no bots in this game
 import { createCleanRoomData } from './roomHelpers.js';
 
 function setupPlayHandlers(io, supabase) {
@@ -72,11 +72,7 @@ function setupPlayHandlers(io, supabase) {
           room.turn = nextPlayer.id;
         }
 
-        // If next player is a bot, make them move
-        const nextPlayerObj = room.players.find(p => p.id === room.turn);
-        if (nextPlayerObj && nextPlayerObj.isBot) {
-          setTimeout(() => makeBotMove(room, nextPlayerObj, io), 1000);
-        }
+        // Bot functionality removed - no bots in this game
       }
 
       io.to(roomId).emit("game_update", createCleanRoomData(room));
@@ -108,11 +104,7 @@ function setupPlayHandlers(io, supabase) {
         if (room.lastPlayer) {
           room.turn = room.lastPlayer;
 
-          // If the last player is a bot, make them move
-          const lastPlayerObj = room.players.find(p => p.id === room.lastPlayer);
-          if (lastPlayerObj && lastPlayerObj.isBot) {
-            setTimeout(() => makeBotMove(room, lastPlayerObj, io), 1000);
-          }
+          // Bot functionality removed - no bots in this game
         }
 
         // Always emit game_update when turn changes, even for bots
@@ -141,11 +133,7 @@ function setupPlayHandlers(io, supabase) {
           room.turn = nextPlayer.id;
         }
 
-        // If next player is a bot, make them move
-        const nextPlayerObj = room.players.find(p => p.id === room.turn);
-        if (nextPlayerObj && nextPlayerObj.isBot) {
-          setTimeout(() => makeBotMove(room, nextPlayerObj, io), 1000);
-        }
+        // Bot functionality removed - no bots in this game
       }
 
       io.to(roomId).emit("game_update", room);

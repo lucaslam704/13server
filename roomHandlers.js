@@ -53,7 +53,6 @@ function setupRoomHandlers(io, supabase) {
               connected: player.connected || false,
               chair: player.chair || null,
               ready: player.ready || false,
-              isBot: player.isBot || false,
               profilePic: player.profilePic || null
             }));
           }
@@ -119,8 +118,7 @@ function setupRoomHandlers(io, supabase) {
             hand: [],
             connected: true,
             chair: null, // Start as viewer
-            ready: false,
-            isBot: false
+            ready: false
           });
         }
 
@@ -179,8 +177,7 @@ function setupRoomHandlers(io, supabase) {
           connected: true,
           chair: chairIndex,
           ready: false,
-          profilePic: null, // Will be updated when user data is fetched
-          isBot: false
+          profilePic: null // Will be updated when user data is fetched
         });
 
         room.chairs[chairIndex] = socket.id;
@@ -201,8 +198,7 @@ function setupRoomHandlers(io, supabase) {
             connected: true,
             chair: chairIndex,
             ready: false,
-            profilePic: null,
-            isBot: false
+            profilePic: null
           });
           room.chairs[chairIndex] = socket.id;
         }

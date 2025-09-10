@@ -1,6 +1,6 @@
 import { getRoom, getStartingPlayerForRoom } from './roomManager.js';
 import { dealCards } from './cardUtils.js';
-import { makeBotMove } from './botLogic.js';
+// Bot functionality removed - no bots in this game
 import { createCleanRoomData } from './roomHelpers.js';
 
 function setupGameHandlers(io, supabase) {
@@ -105,11 +105,7 @@ function setupGameHandlers(io, supabase) {
 
       io.to(roomId).emit("cards_dealt", createCleanRoomData(room));
 
-      // If first player is a bot, make them move after a delay
-      const firstPlayer = room.players.find(p => p.id === room.turn);
-      if (firstPlayer && firstPlayer.isBot) {
-        setTimeout(() => makeBotMove(room, firstPlayer, io), 1000);
-      }
+      // Bot functionality removed - no bots in this game
     });
   });
 }
