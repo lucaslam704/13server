@@ -1,39 +1,59 @@
 import { rooms } from './roomManager.js';
 import { saveRoomToDB } from './databaseHelpers.js';
 
-// Helper function to fetch and update profile pictures for players
+// Cache for profile pictures to avoid repeated database calls
+const profilePicCache = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// Helper function to fetch and update profile pictures for players (optimized)
 async function updatePlayerProfilePics(room, supabaseClient) {
   if (!room.players || room.players.length === 0) return;
 
-  // Get all user IDs that need profile pictures
-  const userIds = room.players
-    .filter(p => p.userId && !p.isBot)
-    .map(p => p.userId);
+  // Get all user IDs that need profile pictures and aren't cached or cache is expired
+  const userIdsToFetch = [];
+  const now = Date.now();
 
-  if (userIds.length === 0) return;
+  room.players.forEach(player => {
+    if (player.userId && !player.isBot) {
+      const cached = profilePicCache.get(player.userId);
+      if (!cached || (now - cached.timestamp) > CACHE_DURATION) {
+        userIdsToFetch.push(player.userId);
+      } else {
+        // Use cached profile picture
+        player.profilePic = cached.profilePic;
+      }
+    }
+  });
+
+  if (userIdsToFetch.length === 0) return;
 
   try {
     const { data, error } = await supabaseClient
       .from('users')
       .select('id, profile_pic')
-      .in('id', userIds);
+      .in('id', userIdsToFetch);
 
     if (error) {
       console.error('Error fetching profile pictures:', error);
       return;
     }
 
-    // Update player objects with profile pictures
-    room.players.forEach(player => {
-      if (player.userId && !player.isBot) {
-        const userData = data.find(u => u.id === player.userId);
-        if (userData) {
+    // Update cache and player objects with profile pictures
+    data.forEach(userData => {
+      profilePicCache.set(userData.id, {
+        profilePic: userData.profile_pic,
+        timestamp: now
+      });
+
+      // Update player objects
+      room.players.forEach(player => {
+        if (player.userId === userData.id) {
           player.profilePic = userData.profile_pic;
         }
-      }
+      });
     });
 
-    console.log('Updated profile pictures for players in room:', room.id);
+    console.log(`Updated profile pictures for ${data.length} players in room:`, room.id);
   } catch (err) {
     console.error('Error updating player profile pictures:', err);
   }
