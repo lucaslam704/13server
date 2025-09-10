@@ -6,21 +6,38 @@ import { createCleanRoomData } from './roomHelpers.js';
 function setupPlayHandlers(io, supabase) {
   io.on("connection", (socket) => {
     socket.on("play_cards", async ({ roomId, cards }) => {
+      console.log(`Player ${socket.id} attempting to play cards:`, cards);
       const room = await getRoom(roomId);
-      if (!room) return; // Room might have been cleaned up
-      if (!room.gameStarted) return;
+      if (!room) {
+        console.log(`Room ${roomId} not found`);
+        return; // Room might have been cleaned up
+      }
+      if (!room.gameStarted) {
+        console.log(`Game not started in room ${roomId}`);
+        return;
+      }
 
       const player = room.players.find(p => p.id === socket.id);
-      if (!player || room.turn !== socket.id) return;
+      if (!player || room.turn !== socket.id) {
+        console.log(`Player not found or not their turn. Player:`, player, `Turn:`, room.turn);
+        return;
+      }
 
       // Validate the combination
       const combination = validateCombination(cards);
+      console.log(`Combination validation result:`, combination);
       if (!combination) {
+        console.log(`Invalid combination:`, cards);
         return; // Invalid combination
       }
 
       // Check if it can beat the current combination
-      if (!canBeatCombination(combination, room.currentCombination)) {
+      const canBeat = canBeatCombination(combination, room.currentCombination);
+      console.log(`Can beat current combination?`, canBeat);
+      console.log(`Current combination:`, room.currentCombination);
+      console.log(`New combination:`, combination);
+      if (!canBeat) {
+        console.log(`Cannot beat current combination`);
         return;
       }
 
