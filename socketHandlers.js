@@ -30,7 +30,7 @@ function setupSocketHandlers(io, supabase) {
     for (const [roomId, room] of rooms) {
       const totalPlayers = room.players.length + room.viewers.length;
 
-      // Reset rooms with no players back to default state
+      // Reset rooms with no active connections back to default state
       if (totalPlayers === 0) {
         console.log(`Resetting empty room: ${roomId} to default state`);
         // Reset room in memory
