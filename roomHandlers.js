@@ -6,6 +6,9 @@ function setupRoomHandlers(io, supabase) {
   io.on("connection", (socket) => {
     console.log("Connected:", socket.id);
 
+    // Store authenticated user ID for this socket
+    let authenticatedUserId = null;
+
     socket.on("get_rooms", async () => {
       const roomsList = await getRoomsFromDB(supabase);
       socket.emit("rooms_list", roomsList);
@@ -83,7 +86,7 @@ function setupRoomHandlers(io, supabase) {
         socket.join(roomId);
 
         // Use authenticated user UUID if available
-        const authenticatedUserId = userId && userId !== socket.id ? userId : null;
+        authenticatedUserId = userId && userId !== socket.id ? userId : null;
 
         // Check if player is already in a seat (reconnecting)
         let seatIndex = -1;
@@ -224,8 +227,12 @@ function setupRoomHandlers(io, supabase) {
     });
 
     socket.on("stand_up", async (roomId) => {
+      console.log(`Player ${socket.id} standing up from room ${roomId}`);
       const room = await getRoom(roomId);
-      if (!room) return; // Room might have been cleaned up
+      if (!room) {
+        console.log(`Room ${roomId} not found for stand_up`);
+        return; // Room might have been cleaned up
+      }
 
       // Ensure room properties are initialized
       if (!room.players) room.players = [];
@@ -234,10 +241,14 @@ function setupRoomHandlers(io, supabase) {
 
       // Find player
       const playerIndex = room.players.findIndex(p => p.id === socket.id);
-      if (playerIndex === -1) return;
+      if (playerIndex === -1) {
+        console.log(`Player ${socket.id} not found in room ${roomId} players`);
+        return;
+      }
 
       const player = room.players[playerIndex];
       const chairIndex = player.chair;
+      console.log(`Player ${player.name} leaving chair ${chairIndex}`);
 
       // Remove from players
       room.players.splice(playerIndex, 1);
@@ -260,6 +271,7 @@ function setupRoomHandlers(io, supabase) {
 
       // Create clean room data for socket emission
       const cleanRoomData = createCleanRoomData(room);
+      console.log(`Emitting room_update for room ${roomId} after stand_up`);
 
       io.to(roomId).emit("room_update", cleanRoomData);
     });

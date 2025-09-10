@@ -42,18 +42,29 @@ export function dealCards(room) {
   const deck = generateDeck();
   shuffleDeck(deck);
 
-  const players = room.players.filter(p => p.chair !== null); // Only deal to seated players
+  const players = room.players.filter(p => p.chair !== null && p.connected); // Only deal to seated and connected players
+
+  if (players.length === 0) {
+    console.log(`No players to deal cards to in room ${room.id}`);
+    return;
+  }
+
   const cardsPerPlayer = Math.floor(deck.length / players.length);
   let cardIndex = 0;
 
   players.forEach(player => {
-    player.hand = deck.slice(cardIndex, cardIndex + cardsPerPlayer);
-    cardIndex += cardsPerPlayer;
+    if (player) {
+      player.hand = deck.slice(cardIndex, cardIndex + cardsPerPlayer);
+      cardIndex += cardsPerPlayer;
+    }
   });
 
   // Handle remaining cards
-  while (cardIndex < deck.length) {
-    players[cardIndex % players.length].hand.push(deck[cardIndex]);
+  while (cardIndex < deck.length && players.length > 0) {
+    const playerIndex = (cardIndex - (players.length * cardsPerPlayer)) % players.length;
+    if (players[playerIndex]) {
+      players[playerIndex].hand.push(deck[cardIndex]);
+    }
     cardIndex++;
   }
 
