@@ -5,15 +5,16 @@ import { saveRoomToDB } from './databaseHelpers.js';
 const profilePicCache = new Map();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-// Helper function to fetch and update profile pictures for players (optimized)
+// Helper function to fetch and update profile pictures for players and viewers (optimized)
 async function updatePlayerProfilePics(room, supabaseClient) {
-  if (!room.players || room.players.length === 0) return;
+  if ((!room.players || room.players.length === 0) && (!room.viewers || room.viewers.length === 0)) return;
 
   // Get all user IDs that need profile pictures and aren't cached or cache is expired
   const userIdsToFetch = [];
   const now = Date.now();
 
-  room.players.forEach(player => {
+  // Check players
+  room.players?.forEach(player => {
     if (player.userId && !player.isBot) {
       const cached = profilePicCache.get(player.userId);
       if (!cached || (now - cached.timestamp) > CACHE_DURATION) {
@@ -21,6 +22,19 @@ async function updatePlayerProfilePics(room, supabaseClient) {
       } else {
         // Use cached profile picture
         player.profilePic = cached.profilePic;
+      }
+    }
+  });
+
+  // Check viewers
+  room.viewers?.forEach(viewer => {
+    if (viewer.userId) {
+      const cached = profilePicCache.get(viewer.userId);
+      if (!cached || (now - cached.timestamp) > CACHE_DURATION) {
+        userIdsToFetch.push(viewer.userId);
+      } else {
+        // Use cached profile picture
+        viewer.profilePic = cached.profilePic;
       }
     }
   });
@@ -46,14 +60,21 @@ async function updatePlayerProfilePics(room, supabaseClient) {
       });
 
       // Update player objects
-      room.players.forEach(player => {
+      room.players?.forEach(player => {
         if (player.userId === userData.id) {
           player.profilePic = userData.profile_pic;
         }
       });
+
+      // Update viewer objects
+      room.viewers?.forEach(viewer => {
+        if (viewer.userId === userData.id) {
+          viewer.profilePic = userData.profile_pic;
+        }
+      });
     });
 
-    console.log(`Updated profile pictures for ${data.length} players in room:`, room.id);
+    console.log(`Updated profile pictures for ${data.length} users in room:`, room.id);
   } catch (err) {
     console.error('Error updating player profile pictures:', err);
   }

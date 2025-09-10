@@ -77,11 +77,13 @@ function setupSocketHandlers(io, supabase) {
         room.round = 1;
         room.deckShuffled = false;
 
-        // Reset room in database
+        // Reset room in database - clear all data when no connected users
         try {
           await supabase
             .from('thirteen_rooms')
             .update({
+              current_players: 0,
+              active_connections: 0,
               players: [],
               viewers: [],
               game_started: false,
@@ -95,7 +97,7 @@ function setupSocketHandlers(io, supabase) {
                 round: 1,
                 deckShuffled: false
               },
-              active_connections: 0,
+              connected_socket_ids: [],
               last_activity: new Date().toISOString()
             })
             .eq('room_id', roomId);
@@ -124,11 +126,13 @@ function setupSocketHandlers(io, supabase) {
         room.round = 1;
         room.deckShuffled = false;
 
-        // Reset room in database
+        // Reset room in database - clear all data for inactive rooms
         try {
           await supabase
             .from('thirteen_rooms')
             .update({
+              current_players: 0,
+              active_connections: 0,
               players: [],
               viewers: [],
               game_started: false,
@@ -142,7 +146,7 @@ function setupSocketHandlers(io, supabase) {
                 round: 1,
                 deckShuffled: false
               },
-              active_connections: 0,
+              connected_socket_ids: [],
               last_activity: new Date().toISOString()
             })
             .eq('room_id', roomId);
