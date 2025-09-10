@@ -52,7 +52,8 @@ export function dealCards(room) {
 
   console.log(`Dealing cards to ${players.length} connected players in room ${room.id}`);
 
-  const cardsPerPlayer = Math.floor(deck.length / players.length);
+  // In Thirteen (Big Two), each player gets exactly 13 cards
+  const cardsPerPlayer = 13;
   let cardIndex = 0;
 
   players.forEach((player, index) => {
@@ -65,17 +66,12 @@ export function dealCards(room) {
     }
   });
 
-  // Handle remaining cards (distribute evenly)
-  let remainingCardIndex = 0;
-  while (cardIndex < deck.length && players.length > 0) {
-    const playerIndex = remainingCardIndex % players.length;
-    if (players[playerIndex]) {
-      players[playerIndex].hand.push(deck[cardIndex]);
-      console.log(`Extra card ${deck[cardIndex]} given to ${players[playerIndex].name}`);
-    }
-    cardIndex++;
-    remainingCardIndex++;
-  }
+  // In Thirteen, we only deal 13 cards per player, regardless of player count
+  // The remaining cards are not dealt to players
+  const totalCardsDealt = players.length * cardsPerPlayer;
+  const remainingCards = deck.length - totalCardsDealt;
+
+  console.log(`Cards dealt: ${totalCardsDealt}, Remaining in deck: ${remainingCards}`);
 
   console.log(`Finished dealing cards. Total cards dealt: ${deck.length}`);
   players.forEach(player => {
