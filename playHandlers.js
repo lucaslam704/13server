@@ -1,5 +1,5 @@
 import { getRoom } from './roomManager.js';
-import { validateCombination, canBeatCombination } from '../utils/cardUtils.js';
+import { validateCombination, canBeatCombination } from './cardUtils.js';
 // Bot functionality removed - no bots in this game
 import { createCleanRoomData } from './roomHelpers.js';
 

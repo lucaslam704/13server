@@ -1,5 +1,5 @@
 import { getRoom, getStartingPlayerForRoom } from './roomManager.js';
-import { dealCards } from '../utils/cardUtils.js';
+import { dealCards } from './cardUtils.js';
 // Bot functionality removed - no bots in this game
 import { createCleanRoomData } from './roomHelpers.js';
 
